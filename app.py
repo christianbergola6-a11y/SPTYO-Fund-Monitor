@@ -17,15 +17,15 @@ TEXT_COLOR    = "#2C2C2C"
 # ==========================================
 # 🔑 YOUR DATABASE KEYS HERE
 # ==========================================
-SUPABASE_URL = "https://YOUR-PROJECT-ID.supabase.co"   # ← YOUR URL
-SUPABASE_KEY = "YOUR-ANON-KEY-HERE"                     # ← YOUR KEY
+SUPABASE_URL = "https://rfyonjupxgficvqjolph.supabase.co"   # ← YOUR URL
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJmeW9uanVweGdmaWN2cWpvbHBoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1MDEzODgsImV4cCI6MjEwMjA3NzM4OH0.XTrHlteEeHoBaZ_HAvExDdGqwDHRjY0ubMmswz4MqQ8"                     # ← YOUR KEY
 
 # ==========================================
 # 🔐 LOGIN CREDENTIALS
 # ==========================================
 ALLOWED_USERS = {
-    "treasurer": "SPTYOfunds2026",
-    "president": "Pagkakaisa2026"
+    "President": "SPTYOpresident",
+    "Vice President": "SPTYOvicepresident"
 }
 
 # ==========================================
