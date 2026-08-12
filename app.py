@@ -221,14 +221,6 @@ def create_poll(question, options):
         st.error(f"❌ Failed to create poll: {e}")
         return False
 
-def delete_poll(poll_id):
-    try:
-        supabase.table("polls").delete().eq("id", poll_id).execute()
-        return True
-    except Exception as e:
-        st.error(f"❌ Failed to delete poll: {e}")
-        return False
-
 def vote_poll(poll_id, option):
     # ✅ SAFE: Fetch → Update → Save back
     res = supabase.table("polls").select("votes").eq("id", poll_id).execute()
