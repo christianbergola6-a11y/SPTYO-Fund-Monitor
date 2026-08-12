@@ -70,38 +70,14 @@ st.markdown(f"""
         background: linear-gradient(90deg, {RED_ACCENT}, {YELLOW_ACCENT}, {GREEN_ACCENT}, {BLUE_ACCENT});
     }}
     hr {{border: none; height: 3px; background: linear-gradient(90deg, {GOLD_COLOR}, {PRIMARY_COLOR}, {GOLD_COLOR}); border-radius: 2px;}}
-    .event-card {{
-        background: #FFFFFF;
-        border-left: 4px solid {GOLD_COLOR};
-        border-radius: 12px;
-        padding: 1.2rem;
-        margin: 0.8rem 0;
-        box-shadow: 2px 3px 8px rgba(0,0,0,0.08);
-    }}
-    .progress-bar-container {{
-        height: 28px;
-        background: #e9e9e9;
-        border-radius: 14px;
-        overflow: hidden;
-        margin: 0.5rem 0;
-    }}
-    .progress-bar-fill {{
-        height: 100%;
-        text-align: center;
-        line-height: 28px;
-        color: white;
-        font-weight: bold;
-        font-size: 0.85rem;
-        border-radius: 14px;
-        transition: width 0.5s ease;
-    }}
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🔗 LINKED BALANCE CALCULATIONS
+# 🔗 LINKED BALANCE = CONTRIBUTIONS + OTHER TRANSACTIONS
 # ==========================================
 def get_total_contributions():
+    """Sum of ALL member contributions"""
     try:
         res = supabase.table("members").select("contribution").execute()
         return sum(float(m["contribution"]) for m in res.data) if res.data else 0.0
@@ -109,6 +85,7 @@ def get_total_contributions():
         return 0.0
 
 def get_transaction_net():
+    """Net from separate transactions (Income − Expense)"""
     try:
         res = supabase.table("transactions1").select("amount,type").execute()
         income = sum(float(r["amount"]) for r in res.data if r["type"] == "Income")
@@ -118,6 +95,7 @@ def get_transaction_net():
         return 0.0
 
 def get_dashboard_balance():
+    """✅ TOTAL BALANCE = Member Contributions + Other Transactions"""
     return round(get_total_contributions() + get_transaction_net(), 2)
 
 # ==========================================
@@ -128,7 +106,8 @@ def add_transaction(desc, amount, trans_type):
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "description": desc,
         "amount": float(amount),
-        "type": trans_type
+        "type": trans_type,
+        "running_balance": 0
     }).execute()
 
 def delete_transaction(row_id):
@@ -174,32 +153,6 @@ def delete_member(member_id):
     supabase.table("members").delete().eq("id", member_id).execute()
 
 # ==========================================
-# 📅 EVENTS / PROJECTS FUNCTIONS
-# ==========================================
-def get_all_events():
-    res = supabase.table("events").select("*").order("event_date").execute()
-    return res.data if res.data else []
-
-def add_event(name, event_date, goal_amount, details):
-    supabase.table("events").insert({
-        "name": name,
-        "event_date": str(event_date),
-        "goal_amount": float(goal_amount),
-        "details": details
-    }).execute()
-
-def update_event(event_id, name, event_date, goal_amount, details):
-    supabase.table("events").update({
-        "name": name,
-        "event_date": str(event_date),
-        "goal_amount": float(goal_amount),
-        "details": details
-    }).eq("id", event_id).execute()
-
-def delete_event(event_id):
-    supabase.table("events").delete().eq("id", event_id).execute()
-
-# ==========================================
 # 🔐 LOGIN SYSTEM
 # ==========================================
 if "logged_in" not in st.session_state:
@@ -208,8 +161,6 @@ if "current_page" not in st.session_state:
     st.session_state.current_page = "Dashboard"
 if "edit_member_id" not in st.session_state:
     st.session_state.edit_member_id = None
-if "edit_event_id" not in st.session_state:
-    st.session_state.edit_event_id = None
 
 if not st.session_state.logged_in:
     st.markdown("<h1 style='text-align:center;'>💰 SPTYO Fund Monitor</h1>", unsafe_allow_html=True)
@@ -231,7 +182,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==========================================
-# 🧭 SIDEBAR — NOW WITH 4 BUTTONS!
+# 🧭 SIDEBAR
 # ==========================================
 with st.sidebar:
     st.markdown("<h2 style='text-align:center;'>🏛️ SPTYO</h2>", unsafe_allow_html=True)
@@ -242,35 +193,27 @@ with st.sidebar:
     if st.button("📊 Dashboard", use_container_width=True):
         st.session_state.current_page = "Dashboard"
         st.session_state.edit_member_id = None
-        st.session_state.edit_event_id = None
         st.rerun()
 
     if st.button("👥 Member Contributions", use_container_width=True):
         st.session_state.current_page = "Contributions"
         st.session_state.edit_member_id = None
-        st.session_state.edit_event_id = None
-        st.rerun()
-
-    if st.button("📅 Events & Projects", use_container_width=True):
-        st.session_state.current_page = "Events"
-        st.session_state.edit_member_id = None
-        st.session_state.edit_event_id = None
         st.rerun()
 
     if st.button("📋 Transaction History", use_container_width=True):
         st.session_state.current_page = "History"
         st.session_state.edit_member_id = None
-        st.session_state.edit_event_id = None
         st.rerun()
 
     st.divider()
     if st.button("🚪 Logout"):
         st.session_state.logged_in = False
         st.session_state.current_page = "Dashboard"
+        st.session_state.edit_member_id = None
         st.rerun()
 
 # ==========================================
-# 📊 DASHBOARD
+# 📊 DASHBOARD — BALANCE AUTO-UPDATES!
 # ==========================================
 if st.session_state.current_page == "Dashboard":
     init_default_members()
@@ -311,7 +254,7 @@ if st.session_state.current_page == "Dashboard":
     st.caption("🏛️ Sitio Pagkakaisa Talented Youth — Fund Monitor System")
 
 # ==========================================
-# 👥 MEMBER CONTRIBUTIONS
+# 👥 MEMBER CONTRIBUTIONS — EDITS UPDATE BALANCE
 # ==========================================
 elif st.session_state.current_page == "Contributions":
     st.markdown("<h2>👥 Member Contributions</h2>", unsafe_allow_html=True)
@@ -321,6 +264,7 @@ elif st.session_state.current_page == "Contributions":
     members = get_all_members()
     total_contribution = get_total_contributions()
 
+    # ADD NEW MEMBER
     with st.expander("➕ Add New Member"):
         with st.form("add_member_form", clear_on_submit=True):
             col1, col2, col3 = st.columns(3)
@@ -333,6 +277,7 @@ elif st.session_state.current_page == "Contributions":
                 st.balloons()
                 st.rerun()
 
+    # EDIT MEMBER
     if st.session_state.edit_member_id is not None:
         member = next((m for m in members if m["id"] == st.session_state.edit_member_id), None)
         if member:
@@ -355,6 +300,7 @@ elif st.session_state.current_page == "Contributions":
                         st.rerun()
             st.divider()
 
+    # MEMBER LIST
     st.subheader("📋 Member List")
     if members:
         for m in members:
@@ -380,107 +326,6 @@ elif st.session_state.current_page == "Contributions":
 
     st.markdown("<br><div class='rainbow-line'></div>", unsafe_allow_html=True)
     st.caption("🏛️ Sitio Pagkakaisa Talented Youth — Member Contributions Record")
-
-# ==========================================
-# 📅 EVENTS & PROJECTS — WITH PROGRESS BAR!
-# ==========================================
-elif st.session_state.current_page == "Events":
-    st.markdown("<h2>📅 Upcoming Events & Projects</h2>", unsafe_allow_html=True)
-    st.divider()
-
-    # Get current total balance (links to progress bar!)
-    current_balance = get_dashboard_balance()
-
-    # ➕ ADD NEW EVENT FORM
-    with st.expander("➕ Add New Event / Project"):
-        with st.form("add_event_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            with col1: event_name = st.text_input("📌 Event / Project Name")
-            with col2: event_date = st.date_input("📅 Event Date")
-            goal_amt = st.number_input("🎯 Fund Goal Amount (₱)", min_value=0.0, step=100.0)
-            details = st.text_area("📝 Description / Details")
-            if st.form_submit_button("✅ Add Event") and event_name:
-                add_event(event_name, event_date, goal_amt, details)
-                st.success(f"✅ Added: {event_name}")
-                st.balloons()
-                st.rerun()
-
-    # ✏️ EDIT EVENT FORM
-    events = get_all_events()
-    if st.session_state.edit_event_id is not None:
-        evt = next((e for e in events if e["id"] == st.session_state.edit_event_id), None)
-        if evt:
-            st.subheader("✏️ Edit Event")
-            with st.form("edit_event_form"):
-                from datetime import datetime as dt
-                col1, col2 = st.columns(2)
-                with col1: new_name = st.text_input("Event Name", value=evt["name"])
-                with col2:
-                    try:
-                        default_date = dt.strptime(evt["event_date"], "%Y-%m-%d")
-                    except:
-                        default_date = dt.now()
-                    new_date = st.date_input("Event Date", value=default_date)
-                new_goal = st.number_input("Goal Amount (₱)", min_value=0.0, step=100.0, value=float(evt["goal_amount"]))
-                new_details = st.text_area("Details", value=evt.get("details", ""))
-                colA, colB = st.columns([1,5])
-                with colA:
-                    if st.form_submit_button("💾 Save"):
-                        update_event(evt["id"], new_name, new_date, new_goal, new_details)
-                        st.success("✅ Event Updated!")
-                        st.session_state.edit_event_id = None
-                        st.rerun()
-                with colB:
-                    if st.form_submit_button("❌ Cancel"):
-                        st.session_state.edit_event_id = None
-                        st.rerun()
-            st.divider()
-
-    # 📋 DISPLAY ALL EVENTS WITH PROGRESS BARS
-    st.subheader("🎯 Upcoming Events & Fund Goals")
-    if events:
-        for evt in events:
-            goal = float(evt["goal_amount"])
-            progress_pct = min(100.0, round((current_balance / goal * 100), 1)) if goal > 0 else 0.0
-
-            # Progress bar color
-            if progress_pct >= 100:
-                bar_color = GREEN_ACCENT
-            elif progress_pct >= 50:
-                bar_color = YELLOW_ACCENT
-            else:
-                bar_color = RED_ACCENT
-
-            st.markdown(f"""
-            <div class='event-card'>
-                <h3 style='margin-top:0; margin-bottom:0.3rem;'>📌 {evt['name']}</h3>
-                <p style='color:#555; margin:0.2rem 0;'><strong>📅 Date:</strong> {evt['event_date']}</p>
-                <p style='margin:0.4rem 0;'><strong>🎯 Goal:</strong> ₱{goal:,.2f} | <strong>💰 Current Balance:</strong> ₱{current_balance:,.2f}</p>
-                <div class='progress-bar-container'>
-                    <div class='progress-bar-fill' style='width:{progress_pct}%; background:{bar_color};'>
-                        {progress_pct}%
-                    </div>
-                </div>
-                <p style='font-size:0.9rem; color:#666; margin-top:0.4rem;'>{evt.get('details', '')}</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-            colE1, colE2, colE3 = st.columns([4, 1, 1])
-            with colE2:
-                if st.button("✏️ Edit", key=f"editevt_{evt['id']}"):
-                    st.session_state.edit_event_id = evt["id"]
-                    st.rerun()
-            with colE3:
-                if st.button("🗑️ Delete", key=f"delevent_{evt['id']}", type="secondary"):
-                    delete_event(evt["id"])
-                    st.success("✅ Event Deleted!")
-                    st.rerun()
-            st.markdown("---")
-    else:
-        st.info("📭 No events yet. Add one above!")
-
-    st.markdown("<br><div class='rainbow-line'></div>", unsafe_allow_html=True)
-    st.caption("🏛️ Sitio Pagkakaisa Talented Youth — Events & Projects Tracker")
 
 # ==========================================
 # 📋 TRANSACTION HISTORY
