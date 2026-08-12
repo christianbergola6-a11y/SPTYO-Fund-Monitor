@@ -203,25 +203,21 @@ def get_all_polls():
     return res.data if res.data else []
 
 def create_poll(question, options):
-    from datetime import datetime
-    import json
-    
-    # ✅ Build votes as a clean JSON string
-    votes_dict = {opt: 0 for opt in options}
-    votes_json = json.dumps(votes_dict)  # Proper JSON format ✅
-    
+    # ✅ SAFE: Initialize votes as empty JSONB
     supabase.table("polls").insert({
         "question": question,
         "options": options,
-        "votes": votes_json,  # ✅ Pass as JSON string, not Python dict
+        "votes": {},  # Empty first — Supabase accepts this ✅
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }).execute()
 
 def vote_poll(poll_id, option):
-    # ✅ Use proper JSON increment for Supabase
-    supabase.table("polls").update({
-        "votes": supabase.raw(f"votes || '{{\"{option}\": (COALESCE(votes->>'{option}', '0')::int + 1)}}'::jsonb")
-    }).eq("id", poll_id).execute()
+    # ✅ SAFE: Fetch → Update → Save back
+    res = supabase.table("polls").select("votes").eq("id", poll_id).execute()
+    if res.data:
+        votes = res.data[0].get("votes", {}) or {}
+        votes[option] = votes.get(option, 0) + 1
+        supabase.table("polls").update({"votes": votes}).eq("id", poll_id).execute()
 
 # ==========================================
 # 🔐 LOGIN SYSTEM
