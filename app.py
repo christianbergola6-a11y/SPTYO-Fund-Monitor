@@ -24,8 +24,9 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 # 🔐 LOGIN CREDENTIALS
 # ==========================================
 ALLOWED_USERS = {
-    "president": "SPTYOfunds2026",
-    "vicepresident": "SPTYOfunds2026"
+    "President": "SPTYOpresident",
+    "Vice President": "SPTYOvicepresident",
+    "Secretary": "SPTYOsecretary"
 }
 
 # ==========================================
