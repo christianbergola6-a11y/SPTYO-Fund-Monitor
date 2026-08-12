@@ -100,7 +100,7 @@ if not st.session_state.logged_in:
 # ==========================================
 def recalculate_balance():
     """Recalculate balance from ALL transactions"""
-    res = supabase.table("transactions").select("amount,type").order("date").execute()
+    res = supabase.table("transactions1").select("amount,type").order("date").execute()
     balance = 0.0
     for r in res.data:
         if r["type"] == "Income":
@@ -116,7 +116,7 @@ def add_transaction(desc, amount, trans_type):
     else:
         new_balance = balance - amount
 
-    supabase.table("transactions").insert({
+    supabase.table("transactions1").insert({
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "description": desc,
         "amount": float(amount),
@@ -127,10 +127,10 @@ def add_transaction(desc, amount, trans_type):
 
 def delete_transaction(row_id):
     """Delete transaction & recalculate ALL balances"""
-    supabase.table("transactions").delete().eq("id", row_id).execute()
+    supabase.table("transactions1").delete().eq("id", row_id).execute()
 
     # ✅ Recalculate EVERY running balance after deletion
-    res = supabase.table("transactions").select("id,amount,type").order("date").execute()
+    res = supabase.table("transactions1").select("id,amount,type").order("date").execute()
     balance = 0.0
     for row in res.data:
         if row["type"] == "Income":
@@ -138,11 +138,11 @@ def delete_transaction(row_id):
         else:
             balance -= float(row["amount"])
         # Update running_balance for each row
-        supabase.table("transactions").update({"running_balance": round(balance, 2)}).eq("id", row["id"]).execute()
+        supabase.table("transactions1").update({"running_balance": round(balance, 2)}).eq("id", row["id"]).execute()
     return round(balance, 2)
 
 def get_history():
-    res = supabase.table("transactions").select("*").order("date", desc=True).execute()
+    res = supabase.table("transactions1").select("*").order("date", desc=True).execute()
     return res.data if res.data else []
 
 # ==========================================
