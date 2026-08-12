@@ -17,15 +17,15 @@ TEXT_COLOR    = "#2C2C2C"
 # ==========================================
 # 🔑 YOUR DATABASE KEYS HERE
 # ==========================================
-SUPABASE_URL = "https://rfyonjupxgficvqjolph.supabase.co"   # ← YOUR URL
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJmeW9uanVweGdmaWN2cWpvbHBoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1MDEzODgsImV4cCI6MjEwMjA3NzM4OH0.XTrHlteEeHoBaZ_HAvExDdGqwDHRjY0ubMmswz4MqQ8"                     # ← YOUR KEY
+SUPABASE_URL = "https://YOUR-PROJECT-ID.supabase.co"   # ← YOUR URL
+SUPABASE_KEY = "YOUR-ANON-KEY-HERE"                     # ← YOUR KEY
 
 # ==========================================
 # 🔐 LOGIN CREDENTIALS
 # ==========================================
 ALLOWED_USERS = {
-    "President": "SPTYOpresident",
-    "Vice President": "SPTYOvicepresident"
+    "treasurer": "SPTYOfunds2026",
+    "president": "Pagkakaisa2026"
 }
 
 # ==========================================
@@ -59,10 +59,6 @@ st.markdown(f"""
         background: linear-gradient(90deg, {RED_ACCENT}, #ff6b6b);
         color: white; border: none;
     }}
-    .stButton>button[kind="primary"] {{
-        background: linear-gradient(90deg, {GREEN_ACCENT}, #66bb6a);
-        color: white; border: none;
-    }}
     .metric-card {{
         background: linear-gradient(135deg, #FFFFFF, {CREAM_COLOR});
         border: 3px solid {GOLD_COLOR}; border-radius: 16px;
@@ -78,61 +74,66 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 📊 DATABASE FUNCTIONS — TRANSACTIONS
+# 🔗 LINKED BALANCE = CONTRIBUTIONS + OTHER TRANSACTIONS
 # ==========================================
-def recalculate_balance():
-    res = supabase.table("transactions1").select("amount,type").order("date").execute()
-    balance = 0.0
-    for r in res.data:
-        if r["type"] == "Income":
-            balance += float(r["amount"])
-        else:
-            balance -= float(r["amount"])
-    return round(balance, 2)
+def get_total_contributions():
+    """Sum of ALL member contributions"""
+    try:
+        res = supabase.table("members").select("contribution").execute()
+        return sum(float(m["contribution"]) for m in res.data) if res.data else 0.0
+    except:
+        return 0.0
 
+def get_transaction_net():
+    """Net from separate transactions (Income − Expense)"""
+    try:
+        res = supabase.table("transactions1").select("amount,type").execute()
+        income = sum(float(r["amount"]) for r in res.data if r["type"] == "Income")
+        expense = sum(float(r["amount"]) for r in res.data if r["type"] == "Expense")
+        return income - expense
+    except:
+        return 0.0
+
+def get_dashboard_balance():
+    """✅ TOTAL BALANCE = Member Contributions + Other Transactions"""
+    return round(get_total_contributions() + get_transaction_net(), 2)
+
+# ==========================================
+# 📊 TRANSACTION FUNCTIONS
+# ==========================================
 def add_transaction(desc, amount, trans_type):
-    balance = recalculate_balance()
-    new_balance = balance + amount if trans_type == "Income" else balance - amount
     supabase.table("transactions1").insert({
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "description": desc,
         "amount": float(amount),
         "type": trans_type,
-        "running_balance": round(new_balance, 2)
+        "running_balance": 0
     }).execute()
-    return round(new_balance, 2)
 
 def delete_transaction(row_id):
     supabase.table("transactions1").delete().eq("id", row_id).execute()
-    res = supabase.table("transactions1").select("id,amount,type").order("date").execute()
-    balance = 0.0
-    for row in res.data:
-        if row["type"] == "Income":
-            balance += float(row["amount"])
-        else:
-            balance -= float(row["amount"])
-        supabase.table("transactions1").update({"running_balance": round(balance, 2)}).eq("id", row["id"]).execute()
-    return round(balance, 2)
 
 def get_history():
     res = supabase.table("transactions1").select("*").order("date", desc=True).execute()
     return res.data if res.data else []
 
 # ==========================================
-# 👥 MEMBER DATABASE FUNCTIONS
+# 👥 MEMBER FUNCTIONS
 # ==========================================
 def init_default_members():
-    """Add default members if table is empty"""
-    res = supabase.table("members").select("*").execute()
-    if not res.data:
-        default = [
-            {"name": "Juan Dela Cruz", "position": "Member", "contribution": 1000.00},
-            {"name": "Maria Santos", "position": "Member", "contribution": 750.00},
-            {"name": "Pedro Reyes", "position": "Member", "contribution": 500.00},
-            {"name": "Ana Cruz", "position": "Member", "contribution": 0.00},
-        ]
-        for m in default:
-            supabase.table("members").insert(m).execute()
+    try:
+        res = supabase.table("members").select("*").execute()
+        if not res.data:
+            default = [
+                {"name": "Juan Dela Cruz", "position": "Member", "contribution": 1000.00},
+                {"name": "Maria Santos", "position": "Member", "contribution": 750.00},
+                {"name": "Pedro Reyes", "position": "Member", "contribution": 500.00},
+                {"name": "Ana Cruz", "position": "Member", "contribution": 0.00},
+            ]
+            for m in default:
+                supabase.table("members").insert(m).execute()
+    except:
+        pass
 
 def get_all_members():
     res = supabase.table("members").select("*").order("name").execute()
@@ -140,16 +141,12 @@ def get_all_members():
 
 def add_member(name, position, contribution):
     supabase.table("members").insert({
-        "name": name,
-        "position": position,
-        "contribution": float(contribution)
+        "name": name, "position": position, "contribution": float(contribution)
     }).execute()
 
 def update_member(member_id, name, position, contribution):
     supabase.table("members").update({
-        "name": name,
-        "position": position,
-        "contribution": float(contribution)
+        "name": name, "position": position, "contribution": float(contribution)
     }).eq("id", member_id).execute()
 
 def delete_member(member_id):
@@ -185,7 +182,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==========================================
-# 🧭 SIDEBAR — NAVIGATION BUTTONS
+# 🧭 SIDEBAR
 # ==========================================
 with st.sidebar:
     st.markdown("<h2 style='text-align:center;'>🏛️ SPTYO</h2>", unsafe_allow_html=True)
@@ -216,17 +213,29 @@ with st.sidebar:
         st.rerun()
 
 # ==========================================
-# 📊 PAGE 1 — DASHBOARD
+# 📊 DASHBOARD — BALANCE AUTO-UPDATES!
 # ==========================================
 if st.session_state.current_page == "Dashboard":
-    balance = recalculate_balance()
+    init_default_members()
+
+    total_contrib = get_total_contributions()
+    other_trans = get_transaction_net()
+    total_balance = get_dashboard_balance()
 
     st.markdown(f"""<div class='metric-card'>
         <h3 style='margin:0;'>💰 Total Savings Balance</h3>
-        <p class='balance-text'>₱{balance:,.2f}</p>
-    </div><br>""", unsafe_allow_html=True)
+        <p class='balance-text'>₱{total_balance:,.2f}</p>
+    </div>""", unsafe_allow_html=True)
 
-    st.subheader("➕ Record New Transaction")
+    colA, colB = st.columns(2)
+    with colA:
+        st.info(f"👥 Member Contributions: *₱{total_contrib:,.2f}*")
+    with colB:
+        st.info(f"📝 Other Transactions: *₱{other_trans:,.2f}*")
+
+    st.divider()
+
+    st.subheader("➕ Record Other Transaction")
     with st.form("entry_form", clear_on_submit=True):
         col1, col2 = st.columns([2,1])
         with col1: desc = st.text_input("📝 Description / Purpose")
@@ -236,8 +245,8 @@ if st.session_state.current_page == "Dashboard":
 
     if submitted and desc and amount > 0:
         t_type = "Income" if "Income" in trans_type else "Expense"
-        new_balance = add_transaction(desc, amount, t_type)
-        st.success(f"✅ Saved! New Balance: *₱{new_balance:,.2f}*")
+        add_transaction(desc, amount, t_type)
+        st.success("✅ Saved! Dashboard balance updated.")
         st.balloons()
         st.rerun()
 
@@ -245,22 +254,17 @@ if st.session_state.current_page == "Dashboard":
     st.caption("🏛️ Sitio Pagkakaisa Talented Youth — Fund Monitor System")
 
 # ==========================================
-# 👥 PAGE 2 — MEMBER CONTRIBUTIONS (EDITABLE!)
+# 👥 MEMBER CONTRIBUTIONS — EDITS UPDATE BALANCE
 # ==========================================
 elif st.session_state.current_page == "Contributions":
     st.markdown("<h2>👥 Member Contributions</h2>", unsafe_allow_html=True)
     st.divider()
 
-    # Initialize default members first time
-    try:
-        init_default_members()
-    except:
-        pass
-
+    init_default_members()
     members = get_all_members()
-    total_contribution = sum(m["contribution"] for m in members) if members else 0.0
+    total_contribution = get_total_contributions()
 
-    # ✅ ADD NEW MEMBER FORM
+    # ADD NEW MEMBER
     with st.expander("➕ Add New Member"):
         with st.form("add_member_form", clear_on_submit=True):
             col1, col2, col3 = st.columns(3)
@@ -269,10 +273,11 @@ elif st.session_state.current_page == "Contributions":
             with col3: contrib = st.number_input("Contribution (₱)", min_value=0.0, step=10.0)
             if st.form_submit_button("✅ Add Member") and name:
                 add_member(name, position, contrib)
-                st.success(f"✅ Added: {name}")
+                st.success(f"✅ Added: {name} — Dashboard balance updated!")
+                st.balloons()
                 st.rerun()
 
-    # ✅ EDIT EXISTING MEMBER FORM
+    # EDIT MEMBER
     if st.session_state.edit_member_id is not None:
         member = next((m for m in members if m["id"] == st.session_state.edit_member_id), None)
         if member:
@@ -286,7 +291,7 @@ elif st.session_state.current_page == "Contributions":
                 with colA:
                     if st.form_submit_button("💾 Save"):
                         update_member(member["id"], new_name, new_pos, new_amt)
-                        st.success("✅ Updated!")
+                        st.success("✅ Updated! Dashboard balance refreshed.")
                         st.session_state.edit_member_id = None
                         st.rerun()
                 with colB:
@@ -295,7 +300,7 @@ elif st.session_state.current_page == "Contributions":
                         st.rerun()
             st.divider()
 
-    # ✅ DISPLAY ALL MEMBERS with EDIT & DELETE buttons
+    # MEMBER LIST
     st.subheader("📋 Member List")
     if members:
         for m in members:
@@ -304,17 +309,18 @@ elif st.session_state.current_page == "Contributions":
             with col2: st.markdown(f"{m['position']}")
             with col3: st.markdown(f"*₱{float(m['contribution']):,.2f}*")
             with col4:
-                if st.button("✏️", key=f"edit_{m['id']}", help="Edit this member"):
+                if st.button("✏️", key=f"edit_{m['id']}", help="Edit — updates Dashboard balance"):
                     st.session_state.edit_member_id = m["id"]
                     st.rerun()
             with col5:
-                if st.button("🗑️", key=f"del_{m['id']}", help="Delete this member", type="secondary"):
+                if st.button("🗑️", key=f"del_{m['id']}", help="Delete — updates Dashboard balance", type="secondary"):
                     delete_member(m["id"])
-                    st.success("✅ Deleted!")
+                    st.success("✅ Deleted! Dashboard balance updated.")
                     st.rerun()
             st.markdown("---")
 
         st.markdown(f"### 💰 Total Contributions: *₱{total_contribution:,.2f}*")
+        st.info("🔗 This amount is automatically added to your Dashboard Total Balance.")
     else:
         st.info("📭 No members yet. Add one above!")
 
@@ -322,7 +328,7 @@ elif st.session_state.current_page == "Contributions":
     st.caption("🏛️ Sitio Pagkakaisa Talented Youth — Member Contributions Record")
 
 # ==========================================
-# 📋 PAGE 3 — TRANSACTION HISTORY
+# 📋 TRANSACTION HISTORY
 # ==========================================
 elif st.session_state.current_page == "History":
     st.markdown("<h2>📋 Complete Transaction History</h2>", unsafe_allow_html=True)
@@ -332,7 +338,7 @@ elif st.session_state.current_page == "History":
 
     if history:
         for row in history:
-            col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
+            col1, col2, col3, col4 = st.columns([4, 2, 3, 1])
             with col1:
                 st.markdown(f"*{row['date']}*  \n{row['description']}")
             with col2:
@@ -341,12 +347,9 @@ elif st.session_state.current_page == "History":
                 amt = f"₱{float(row['amount']):,.2f}"
                 st.markdown(f"*{amt}*")
             with col4:
-                bal = f"₱{float(row['running_balance']):,.2f}"
-                st.markdown(f"{bal}")
-            with col5:
-                if st.button("🗑️", key=f"del_{row['id']}", help="Delete this transaction", type="secondary"):
+                if st.button("🗑️", key=f"del_{row['id']}", help="Delete", type="secondary"):
                     delete_transaction(row["id"])
-                    st.success("✅ Deleted! Balance recalculated.")
+                    st.success("✅ Deleted! Dashboard balance updated.")
                     st.rerun()
             st.markdown("---")
     else:
