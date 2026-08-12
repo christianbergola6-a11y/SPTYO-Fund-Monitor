@@ -128,9 +128,10 @@ def add_transaction(desc, amount, trans_type):
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "description": desc,
         "amount": float(amount),
-        "type": trans_type
+        "type": trans_type,
+        "running_balance": 0
     }).execute()
-
+    
 def delete_transaction(row_id):
     supabase.table("transactions1").delete().eq("id", row_id).execute()
 
