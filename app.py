@@ -203,13 +203,23 @@ def get_all_polls():
     return res.data if res.data else []
 
 def create_poll(question, options):
-    # ✅ SAFE: Initialize votes as empty JSONB
-    supabase.table("polls").insert({
-        "question": question,
-        "options": options,
-        "votes": {},  # Empty first — Supabase accepts this ✅
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }).execute()
+    try:
+        data = {
+            "question": question,
+            "options": options,
+            "votes": {},
+            "created_at": datetime.now().isoformat()
+        }
+
+        response = supabase.table("polls").insert(data).execute()
+
+        print("Poll created:", response.data)
+        return True
+
+    except Exception as e:
+        print("SUPABASE POLL ERROR:", repr(e))
+        st.error(f"❌ Failed to create poll: {e}")
+        return False
 
 def vote_poll(poll_id, option):
     # ✅ SAFE: Fetch → Update → Save back
@@ -611,10 +621,11 @@ elif st.session_state.current_page == "Polls":
                 opt3 = st.text_input("Option 3 (optional)")
                 opt4 = st.text_input("Option 4 (optional)")
                 if st.form_submit_button("✅ Create Poll") and question and opt1 and opt2:
-                    options = [o for o in [opt1, opt2, opt3, opt4] if o.strip()]
-                    create_poll(question, options)
-                    st.success("✅ Poll Created!")
-                    st.rerun()
+                    options = [o.strip() for o in [opt1, opt2, opt3, opt4] if o.strip()]
+
+                    if create_poll(question, options):
+                        st.success("✅ Poll Created!")
+                        st.rerun()
 
     polls = get_all_polls()
     if polls:
