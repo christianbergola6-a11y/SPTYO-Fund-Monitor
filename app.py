@@ -167,16 +167,14 @@ def update_request_status(request_id, new_status):
     supabase.table("requests").update({"status": new_status, "reviewed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}).eq("id", request_id).execute()
 
 # ==========================================
-# 👤 MEMBER INFO — ✅ FIXED UPSERT
+# 👤 MEMBER INFO — ✅ FIXED UPSERT + RLS COMPATIBLE
 # ==========================================
 def save_member_info(name, position, contribution):
     try:
-        supabase.table("member").upsert({
-            "id": 1,
-            "name": name,
-            "position": position,
-            "contribution": float(contribution)
-        }).execute()
+        supabase.table("member").upsert(
+            {"id": 1, "name": name, "position": position, "contribution": float(contribution)},
+            on_conflict="id"
+        ).execute()
         return True
     except Exception as e:
         st.error(f"❌ Failed to save: {e}")
@@ -193,7 +191,7 @@ def get_member_info():
         return {"name": "", "position": "", "contribution": 0.00}
 
 # ==========================================
-# 📅 EVENTS — ✅ WITH DELETE FUNCTION
+# 📅 EVENTS — WITH DELETE FUNCTION
 # ==========================================
 def get_all_events():
     res = supabase.table("events").select("*").order("event_date").execute()
@@ -208,7 +206,6 @@ def add_event(name, event_date, goal_amount, details):
     }).execute()
 
 def delete_event(event_id):
-    """🗑️ DELETE EVENT — PRESIDENT ONLY"""
     try:
         supabase.table("events").delete().eq("id", event_id).execute()
         return True
@@ -402,11 +399,25 @@ if st.session_state.current_page == "Dashboard":
     st.caption(f"🏛️ SPTYO Fund Monitor — Logged in as: {role}")
 
 # ==========================================
-# 📋 TRANSACTIONS — PRESIDENT & VP
+# 📋 TRANSACTIONS — PRESIDENT & VP + TREASURER
 # ==========================================
 elif st.session_state.current_page == "Transactions":
     st.markdown("<h2>📋 Complete Transaction History</h2>", unsafe_allow_html=True)
     st.divider()
+
+    # ✅ MEMBER INFO — ONLY VISIBLE TO TREASURER
+    if role == "Treasurer":
+        member = get_member_info()
+        contrib = get_member_contribution()
+        st.markdown(f"""
+        <div style='background:#e8f5e9; padding:1rem; border-radius:12px; border-left:4px solid #34A853; margin-bottom:1rem;'>
+            <h4 style='margin:0;'>👤 Member Contribution</h4>
+            <p style='font-size:1.1rem; margin:0.3rem 0;'><strong>{member.get('name', 'Not Set')}</strong> — {member.get('position', 'Member')}</p>
+            <p style='font-size:1.3rem; font-weight:bold; color:#34A853; margin:0;'>₱{contrib:,.2f}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown("---")
+
     history = get_history()
 
     if history:
@@ -597,7 +608,7 @@ elif st.session_state.current_page == "My Contribution":
         """, unsafe_allow_html=True)
 
 # ==========================================
-# 📅 EVENTS — PRESIDENT, VP + 🗑️ PRESIDENT DELETE
+# 📅 EVENTS — PRESIDENT, VP + PRESIDENT DELETE
 # ==========================================
 elif st.session_state.current_page == "Events":
     st.markdown("<h2>📅 Events & Projects</h2>", unsafe_allow_html=True)
@@ -625,7 +636,6 @@ elif st.session_state.current_page == "Events":
             progress_pct = min(100.0, round((current_balance / goal * 100), 1)) if goal > 0 else 0.0
             bar_color = GREEN_ACCENT if progress_pct >= 100 else YELLOW_ACCENT if progress_pct >= 50 else RED_ACCENT
 
-            # 🗑️ DELETE BUTTON — PRESIDENT ONLY
             col_info, col_del = st.columns([9, 1])
             with col_info:
                 st.markdown(f"""
