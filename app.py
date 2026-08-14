@@ -108,7 +108,7 @@ st.markdown(f"""
 # ==========================================
 def get_member_contribution():
     try:
-        res = supabase.table("member").select("contribution").execute()
+        res = supabase.table("member").select("contribution").eq("id", 1).execute()
         return float(res.data[0]["contribution"]) if res.data else 0.0
     except: return 0.0
 
@@ -167,37 +167,57 @@ def update_request_status(request_id, new_status):
     supabase.table("requests").update({"status": new_status, "reviewed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}).eq("id", request_id).execute()
 
 # ==========================================
-# 👤 MEMBER INFO
+# 👤 MEMBER INFO — ✅ FIXED UPSERT
 # ==========================================
 def save_member_info(name, position, contribution):
     try:
-        supabase.table("member").delete().neq("id", 0).execute()
-        supabase.table("member").insert({
+        supabase.table("member").upsert({
+            "id": 1,
             "name": name,
             "position": position,
             "contribution": float(contribution)
         }).execute()
         return True
-    except: return False
+    except Exception as e:
+        st.error(f"❌ Failed to save: {e}")
+        return False
 
 def get_member_info():
     try:
-        res = supabase.table("member").select("*").execute()
-        return res.data[0] if res.data else {"name": "", "position": "", "contribution": 0.00}
-    except: return {"name": "", "position": "", "contribution": 0.00}
+        res = supabase.table("member").select("*").eq("id", 1).execute()
+        if res.data:
+            return res.data[0]
+        return {"name": "", "position": "", "contribution": 0.00}
+    except Exception as e:
+        st.error(f"❌ Failed to load: {e}")
+        return {"name": "", "position": "", "contribution": 0.00}
 
 # ==========================================
-# 📅 EVENTS
+# 📅 EVENTS — ✅ WITH DELETE FUNCTION
 # ==========================================
 def get_all_events():
     res = supabase.table("events").select("*").order("event_date").execute()
     return res.data if res.data else []
 
 def add_event(name, event_date, goal_amount, details):
-    supabase.table("events").insert({"name": name, "event_date": str(event_date), "goal_amount": float(goal_amount), "details": details}).execute()
+    supabase.table("events").insert({
+        "name": name,
+        "event_date": str(event_date),
+        "goal_amount": float(goal_amount),
+        "details": details
+    }).execute()
+
+def delete_event(event_id):
+    """🗑️ DELETE EVENT — PRESIDENT ONLY"""
+    try:
+        supabase.table("events").delete().eq("id", event_id).execute()
+        return True
+    except Exception as e:
+        st.error(f"❌ Failed to delete event: {e}")
+        return False
 
 # ==========================================
-# 🗳️ POLLS — ONE VOTE PER PERSON + DELETE BUTTON
+# 🗳️ POLLS — 1 VOTE PER PERSON + DELETE BUTTON
 # ==========================================
 def get_all_polls():
     res = supabase.table("polls").select("*").order("created_at", desc=True).execute()
@@ -209,7 +229,7 @@ def create_poll(question, options):
             "question": question,
             "options": options,
             "votes": {opt: 0 for opt in options},
-            "voters": {},  # ✅ Tracks who voted: {username: chosen_option}
+            "voters": {},
             "created_at": datetime.now().isoformat()
         }
         supabase.table("polls").insert(data).execute()
@@ -227,25 +247,20 @@ def delete_poll(poll_id):
         return False
 
 def vote_poll(poll_id, option, username):
-    """ ONE VOTE PER USER — Can change vote later """
     try:
         res = supabase.table("polls").select("votes, voters").eq("id", poll_id).execute()
         if not res.data: return False
-
         data = res.data[0]
         votes = data.get("votes") or {}
         voters = data.get("voters") or {}
 
-        # If user ALREADY voted → remove old vote first
         if username in voters:
             old_vote = voters[username]
             votes[old_vote] = max(0, votes.get(old_vote, 1) - 1)
 
-        # Add NEW vote
         votes[option] = votes.get(option, 0) + 1
-        voters[username] = option  # Record who user voted for
+        voters[username] = option
 
-        # Save back to database
         supabase.table("polls").update({"votes": votes, "voters": voters}).eq("id", poll_id).execute()
         return True
     except Exception as e:
@@ -288,7 +303,7 @@ if not st.session_state.logged_in:
 # 🧭 SIDEBAR — ROLE-BASED PAGES
 # ==========================================
 role = st.session_state.user_role
-username = st.session_state.username  # Current logged-in user
+username = st.session_state.username
 role_class = {"President":"role-president", "Vice President":"role-vp", "Treasurer":"role-treasurer", "Member":"role-member"}.get(role, "")
 
 with st.sidebar:
@@ -499,8 +514,6 @@ elif st.session_state.current_page == "Manage Members":
                     st.success("✅ Member Info Saved! Dashboard updated!")
                     st.balloons()
                     st.rerun()
-                else:
-                    st.error("❌ Failed to save! Check Supabase setup.")
 
 # ==========================================
 # ➕ RECORD TRANSACTIONS — TREASURER
@@ -584,7 +597,7 @@ elif st.session_state.current_page == "My Contribution":
         """, unsafe_allow_html=True)
 
 # ==========================================
-# 📅 EVENTS — PRESIDENT, VP
+# 📅 EVENTS — PRESIDENT, VP + 🗑️ PRESIDENT DELETE
 # ==========================================
 elif st.session_state.current_page == "Events":
     st.markdown("<h2>📅 Events & Projects</h2>", unsafe_allow_html=True)
@@ -611,22 +624,33 @@ elif st.session_state.current_page == "Events":
             goal = float(evt["goal_amount"])
             progress_pct = min(100.0, round((current_balance / goal * 100), 1)) if goal > 0 else 0.0
             bar_color = GREEN_ACCENT if progress_pct >= 100 else YELLOW_ACCENT if progress_pct >= 50 else RED_ACCENT
-            st.markdown(f"""
-            <div class='event-card'>
-                <h3 style='margin-top:0; margin-bottom:0.3rem;'>📌 {evt['name']}</h3>
-                <p style='color:#555; margin:0.2rem 0;'><strong>📅 Date:</strong> {evt['event_date']}</p>
-                <p style='margin:0.4rem 0;'><strong>🎯 Goal:</strong> ₱{goal:,.2f} | <strong>💰 Current Balance:</strong> ₱{current_balance:,.2f}</p>
-                <div class='progress-bar-container'>
-                    <div class='progress-bar-fill' style='width:{progress_pct}%; background:{bar_color};'>{progress_pct}%</div>
+
+            # 🗑️ DELETE BUTTON — PRESIDENT ONLY
+            col_info, col_del = st.columns([9, 1])
+            with col_info:
+                st.markdown(f"""
+                <div class='event-card'>
+                    <h3 style='margin-top:0; margin-bottom:0.3rem;'>📌 {evt['name']}</h3>
+                    <p style='color:#555; margin:0.2rem 0;'><strong>📅 Date:</strong> {evt['event_date']}</p>
+                    <p style='margin:0.4rem 0;'><strong>🎯 Goal:</strong> ₱{goal:,.2f} | <strong>💰 Current Balance:</strong> ₱{current_balance:,.2f}</p>
+                    <div class='progress-bar-container'>
+                        <div class='progress-bar-fill' style='width:{progress_pct}%; background:{bar_color};'>{progress_pct}%</div>
+                    </div>
+                    <p style='font-size:0.9rem; color:#666; margin-top:0.4rem;'>{evt.get('details', '')}</p>
                 </div>
-                <p style='font-size:0.9rem; color:#666; margin-top:0.4rem;'>{evt.get('details', '')}</p>
-            </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
+            with col_del:
+                if role == "President":
+                    if st.button("🗑️", key=f"del_evt_{evt['id']}", help="Delete this event"):
+                        if delete_event(evt["id"]):
+                            st.success("✅ Event deleted!")
+                            st.rerun()
+            st.markdown("---")
     else:
         st.info("📭 No events yet.")
 
 # ==========================================
-# 🗳️ POLLS — ONE VOTE PER PERSON + DELETE BUTTON
+# 🗳️ POLLS — 1 VOTE PER PERSON + DELETE BUTTON
 # ==========================================
 elif st.session_state.current_page == "Polls":
     st.markdown("<h2>🗳️ Polls & Voting</h2>", unsafe_allow_html=True)
@@ -653,9 +677,7 @@ elif st.session_state.current_page == "Polls":
             question = p.get("question", "No question")
             options = p.get("options", []) or []
             votes = p.get("votes", {}) or {}
-            voters = p.get("voters", {}) or {}  # Who voted for what
-
-            # Check if CURRENT USER already voted on THIS poll
+            voters = p.get("voters", {}) or {}
             my_vote = voters.get(username, None)
 
             col_q, col_del = st.columns([9, 1])
@@ -664,9 +686,8 @@ elif st.session_state.current_page == "Polls":
                 if my_vote:
                     st.markdown(f"<span class='voted-tag'>✅ You voted: {my_vote}</span>", unsafe_allow_html=True)
             with col_del:
-                # 🗑️ DELETE BUTTON — PRESIDENT ONLY
                 if role == "President":
-                    if st.button("🗑️", key=f"del_{poll_id}_{idx}", help="Delete this poll"):
+                    if st.button("🗑️", key=f"del_poll_{poll_id}_{idx}", help="Delete this poll"):
                         if delete_poll(poll_id):
                             st.success("✅ Poll deleted!")
                             st.rerun()
@@ -676,20 +697,14 @@ elif st.session_state.current_page == "Polls":
                 count = votes.get(opt, 0)
                 pct = round(count / total_votes * 100, 1) if total_votes > 0 else 0.0
                 colA, colB = st.columns([4, 1])
+                is_my_choice = (my_vote == opt)
+                btn_label = f"✅ {opt}" if is_my_choice else f"🗳️ {opt}"
 
                 with colA:
-                    # ✅ Highlight the option THIS USER voted for
-                    is_my_choice = (my_vote == opt)
-                    btn_label = f"✅ {opt}" if is_my_choice else f"🗳️ {opt}"
-
                     if st.button(f"{btn_label} ({count} votes — {pct}%)", key=f"vote_{poll_id}_{opt}"):
                         if vote_poll(poll_id, opt, username):
-                            if is_my_choice:
-                                st.info(f"ℹ️ Your vote for '{opt}' updated!")
-                            else:
-                                st.success(f"✅ Vote recorded! You voted for '{opt}'")
+                            st.success(f"✅ Vote recorded! You voted for '{opt}'")
                             st.rerun()
-
                 with colB:
                     st.markdown(f"**{pct}%**")
             st.markdown("---")
