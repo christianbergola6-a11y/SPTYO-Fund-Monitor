@@ -56,51 +56,12 @@ def get_new_announcements_count():
         return 0
 
 # ==========================================
-# 🎨 PAGE STYLE — WITH SPTYO LOGO SIDEBAR BACKGROUND
+# 🎨 PAGE STYLE
 # ==========================================
 st.set_page_config(page_title="SPTYO Fund Monitor", page_icon="💰", layout="wide")
-
-# Convert logo to base64 so it loads as background
-import base64
-from pathlib import Path
-
-def get_base64_of_image(image_path):
-    if Path(image_path).exists():
-        with open(image_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode()
-    return ""
-
-logo_b64 = get_base64_of_image("sptyo_logo.png")
-
 st.markdown(f"""
     <style>
     .stApp {{background-color: {CREAM_COLOR}; color: {TEXT_COLOR};}}
-    
-    /* ===== 🖼️ SIDEBAR WITH LOGO BACKGROUND ===== */
-    [data-testid="stSidebar"] {{
-        background-color: #f8f4e9;
-        background-image: url("data:image/png;base64,{logo_b64}");
-        background-repeat: no-repeat;
-        background-position: center 40px;
-        background-size: 85%;
-    }}
-    
-    /* Dark overlay for readability */
-    [data-testid="stSidebar"]::before {{
-        content: "";
-        position: absolute;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(255, 255, 255, 0.82);
-        z-index: 0;
-        pointer-events: none;
-    }}
-    
-    /* Keep all sidebar content above overlay */
-    [data-testid="stSidebar"] > * {{
-        position: relative;
-        z-index: 1;
-    }}
-    
     h1, h2, h3 {{color: {PRIMARY_COLOR}; font-weight: 700;}}
     .stButton>button {{
         background: linear-gradient(90deg, {GOLD_COLOR}, {YELLOW_ACCENT});
