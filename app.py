@@ -377,7 +377,7 @@ def vote_poll(poll_id, option, username):
         return False
 
 # ==========================================
-# 📢 ANNOUNCEMENTS — ✅ PRESIDENT CAN CREATE & DELETE
+# 📢 ANNOUNCEMENTS
 # ==========================================
 def create_announcement(title, message, created_by):
     try:
@@ -451,7 +451,7 @@ if not st.session_state.logged_in:
 show_bell_notification()
 
 # ==========================================
-# 🧭 SIDEBAR — Events for ALL roles
+# 🧭 SIDEBAR — VP & Treasurer NOW HAVE POLLS ✅
 # ==========================================
 role = st.session_state.user_role
 username = st.session_state.username
@@ -489,6 +489,8 @@ with st.sidebar:
             st.session_state.current_page = "Submit Request"; st.rerun()
         if st.button("📅 Events & Projects", use_container_width=True):
             st.session_state.current_page = "Events"; st.rerun()
+        if st.button("🗳️ Polls", use_container_width=True):  # ✅ ADDED
+            st.session_state.current_page = "Polls"; st.rerun()
         if st.button(f"📢 Announcements{ann_badge}", use_container_width=True):
             st.session_state.current_page = "Announcements"; st.rerun()
 
@@ -503,6 +505,8 @@ with st.sidebar:
             st.session_state.current_page = "Manage Members"; st.rerun()
         if st.button("📅 Events & Projects", use_container_width=True):
             st.session_state.current_page = "Events"; st.rerun()
+        if st.button("🗳️ Polls", use_container_width=True):  # ✅ ADDED
+            st.session_state.current_page = "Polls"; st.rerun()
         if st.button(f"📢 Announcements{ann_badge}", use_container_width=True):
             st.session_state.current_page = "Announcements"; st.rerun()
 
@@ -780,7 +784,7 @@ elif st.session_state.current_page == "My Contribution":
         st.markdown(f"### 💰 Total: **₱{get_total_contribution():,.2f}**")
 
 # ==========================================
-# 📅 EVENTS & PROJECTS — VIEW-ONLY FOR NON-PRESIDENT
+# 📅 EVENTS & PROJECTS
 # ==========================================
 elif st.session_state.current_page == "Events":
     st.markdown("<h2>📅 Events & Projects</h2>", unsafe_allow_html=True)
@@ -833,11 +837,13 @@ elif st.session_state.current_page == "Events":
         st.info("📭 No events yet.")
 
 # ==========================================
-# 🗳️ POLLS
+# 🗳️ POLLS — ✅ VP & Treasurer CAN VOTE!
 # ==========================================
 elif st.session_state.current_page == "Polls":
     st.markdown("<h2>🗳️ Polls & Voting</h2>", unsafe_allow_html=True)
     st.divider()
+
+    # 👑 ONLY PRESIDENT CAN CREATE NEW POLL
     if role == "President":
         with st.expander("➕ Create New Poll"):
             with st.form("poll_form", clear_on_submit=True):
@@ -851,6 +857,9 @@ elif st.session_state.current_page == "Polls":
                     if create_poll(question, options):
                         st.success("✅ Poll Created!")
                         st.rerun()
+    else:
+        st.markdown("<div class='readonly-badge'>👁️ View & Vote Only — Polls managed by President</div>", unsafe_allow_html=True)
+
     polls = get_all_polls()
     if polls:
         for idx, p in enumerate(polls):
@@ -860,17 +869,21 @@ elif st.session_state.current_page == "Polls":
             votes = p.get("votes", {}) or {}
             voters = p.get("voters", {}) or {}
             my_vote = voters.get(username, None)
+
             col_q, col_del = st.columns([9, 1])
             with col_q:
                 st.subheader(f"❓ {question}")
                 if my_vote:
                     st.markdown(f"<span class='voted-tag'>✅ You voted: {my_vote}</span>", unsafe_allow_html=True)
+
+            # 👑 ONLY PRESIDENT CAN DELETE POLL
             with col_del:
                 if role == "President":
                     if st.button("🗑️", key=f"del_poll_{poll_id}_{idx}", help="Delete this poll"):
                         if delete_poll(poll_id):
                             st.success("✅ Poll deleted!")
                             st.rerun()
+
             total_votes = sum(votes.values())
             for opt in options:
                 count = votes.get(opt, 0)
@@ -878,7 +891,9 @@ elif st.session_state.current_page == "Polls":
                 colA, colB = st.columns([4, 1])
                 is_my_choice = (my_vote == opt)
                 btn_label = f"✅ {opt}" if is_my_choice else f"🗳️ {opt}"
+
                 with colA:
+                    # ✅ EVERYONE CAN VOTE — President, VP, Treasurer, Member
                     if st.button(f"{btn_label} ({count} votes — {pct}%)", key=f"vote_{poll_id}_{opt}"):
                         if vote_poll(poll_id, opt, username):
                             st.success(f"✅ Vote recorded! You voted for '{opt}'")
@@ -890,7 +905,7 @@ elif st.session_state.current_page == "Polls":
         st.info("📭 No polls yet.")
 
 # ==========================================
-# 📢 ANNOUNCEMENTS — ✅ PRESIDENT: CREATE & DELETE | OTHERS: VIEW ONLY
+# 📢 ANNOUNCEMENTS — ✅ FULLY COMPLETED
 # ==========================================
 elif st.session_state.current_page == "Announcements":
     st.markdown("<h2>📢 Announcements</h2>", unsafe_allow_html=True)
@@ -910,7 +925,7 @@ elif st.session_state.current_page == "Announcements":
                     else:
                         st.error("❌ Failed to post! Check Supabase table.")
 
-    # 📋 EVERYONE: VIEW ALL ANNOUNCEMENTS
+        # 📋 EVERYONE: VIEW ALL ANNOUNCEMENTS
     announcements = get_all_announcements()
     if not announcements:
         st.info("📭 No announcements yet. President will post updates here!")
@@ -932,6 +947,7 @@ elif st.session_state.current_page == "Announcements":
                     <p style='margin-top:0.8rem; white-space:pre-wrap;'>{ann.get('message', '')}</p>
                 </div>
                 """, unsafe_allow_html=True)
+            
             # 👑 ONLY PRESIDENT SEES DELETE BUTTON
             with col_del:
                 if role == "President":
@@ -940,6 +956,6 @@ elif st.session_state.current_page == "Announcements":
                             st.success("✅ Announcement deleted!")
                             st.rerun()
 
-            # Mark as seen for non-presidents
+            # ✅ MARK AS SEEN — ONLY FOR NON-PRESIDENTS
             if is_new and role != "President":
                 mark_as_seen(ann["id"])
