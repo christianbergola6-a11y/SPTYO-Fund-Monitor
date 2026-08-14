@@ -100,6 +100,10 @@ st.markdown(f"""
     .role-treasurer {{background: #34A853; color: white;}}
     .role-member {{background: #9e9e9e; color: white;}}
     .voted-tag {{background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 10px; font-size: 0.85rem; font-weight:bold;}}
+    .member-info-box {{
+        background:#e8f5e9; padding:1rem; border-radius:12px;
+        border-left:4px solid #34A853; margin-bottom:1rem;
+    }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -181,7 +185,7 @@ def save_member_info(name, position, contribution):
         return False
 
 def delete_member_info():
-    """🗑️ DELETE MEMBER INFO — TREASURER ONLY"""
+    """🗑️ DELETE MEMBER INFO — PRESIDENT ONLY"""
     try:
         supabase.table("member").delete().eq("id", 1).execute()
         return True
@@ -306,7 +310,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==========================================
-# 🧭 SIDEBAR — ROLE-BASED PAGES (UPDATED)
+# 🧭 SIDEBAR — ✅ MANAGE MEMBERS = TREASURER ONLY
 # ==========================================
 role = st.session_state.user_role
 username = st.session_state.username
@@ -334,7 +338,7 @@ with st.sidebar:
         if st.button("🗳️ Polls", use_container_width=True):
             st.session_state.current_page = "Polls"
             st.rerun()
-        # ❌ Manage Members REMOVED from President
+        # ❌ MANAGE MEMBERS — REMOVED FROM PRESIDENT
 
     elif role == "Vice President":
         if st.button("📊 Dashboard", use_container_width=True):
@@ -349,7 +353,7 @@ with st.sidebar:
         if st.button("📅 Events & Projects", use_container_width=True):
             st.session_state.current_page = "Events"
             st.rerun()
-        # ❌ Manage Members REMOVED from VP
+        # ❌ MANAGE MEMBERS — REMOVED FROM VP
 
     elif role == "Treasurer":
         if st.button("📊 Dashboard", use_container_width=True):
@@ -408,27 +412,37 @@ if st.session_state.current_page == "Dashboard":
     st.caption(f"🏛️ SPTYO Fund Monitor — Logged in as: {role}")
 
 # ==========================================
-# 📋 TRANSACTIONS — PRESIDENT & VP + TREASURER
+# 📋 TRANSACTIONS — ✅ MEMBER INFO SHOWN + PRESIDENT DELETE BUTTON
 # ==========================================
 elif st.session_state.current_page == "Transactions":
     st.markdown("<h2>📋 Complete Transaction History</h2>", unsafe_allow_html=True)
     st.divider()
 
-    # ✅ MEMBER INFO — ONLY VISIBLE TO TREASURER
-    if role == "Treasurer":
-        member = get_member_info()
-        contrib = get_member_contribution()
+    # ✅ MEMBER INFO — VISIBLE TO PRESIDENT, VP, TREASURER
+    member = get_member_info()
+    contrib = get_member_contribution()
+
+    col_info, col_del_btn = st.columns([4, 1])
+    with col_info:
         st.markdown(f"""
-        <div style='background:#e8f5e9; padding:1rem; border-radius:12px; border-left:4px solid #34A853; margin-bottom:1rem;'>
+        <div class='member-info-box'>
             <h4 style='margin:0;'>👤 Member Contribution</h4>
             <p style='font-size:1.1rem; margin:0.3rem 0;'><strong>{member.get('name', 'Not Set')}</strong> — {member.get('position', 'Member')}</p>
             <p style='font-size:1.3rem; font-weight:bold; color:#34A853; margin:0;'>₱{contrib:,.2f}</p>
         </div>
         """, unsafe_allow_html=True)
-        st.markdown("---")
+
+    # ✅ DELETE BUTTON — PRESIDENT ONLY
+    with col_del_btn:
+        if role == "President":
+            if st.button("🗑️ Delete Member Info", type="secondary", help="Delete all member information"):
+                if delete_member_info():
+                    st.success("✅ Member Info DELETED!")
+                    st.rerun()
+
+    st.markdown("---")
 
     history = get_history()
-
     if history:
         for row in history:
             col1, col2, col3, col4 = st.columns([3, 1.5, 2, 2])
@@ -515,7 +529,7 @@ elif st.session_state.current_page == "Submit Request":
         st.info("📭 No submitted requests yet.")
 
 # ==========================================
-# 👤 MANAGE MEMBERS — TREASURER ONLY + 🗑️ DELETE BUTTON
+# 👤 MANAGE MEMBERS — TREASURER ONLY (SAVE ONLY)
 # ==========================================
 elif st.session_state.current_page == "Manage Members":
     st.markdown("<h2>👤 Manage Member Information</h2>", unsafe_allow_html=True)
@@ -527,25 +541,16 @@ elif st.session_state.current_page == "Manage Members":
         position = st.text_input("Position / Role", value=member.get("position", ""))
         contribution = st.number_input("Contribution Amount (₱)", min_value=0.0, step=100.0, value=float(member.get("contribution", 0)))
 
-        col_save, col_del = st.columns([3, 1])
-        with col_save:
-            submitted = st.form_submit_button("💾 Save Member Info")
-        with col_del:
-            delete_clicked = st.form_submit_button("🗑️ Delete", type="secondary")
+        submitted = st.form_submit_button("💾 Save Member Info")
 
         if submitted:
             if not name.strip():
                 st.error("❌ Please enter a name!")
             else:
                 if save_member_info(name, position, contribution):
-                    st.success("✅ Member Info Saved! Dashboard updated!")
+                    st.success("✅ Member Info Saved! Transactions & Dashboard updated!")
                     st.balloons()
                     st.rerun()
-
-        if delete_clicked:
-            if delete_member_info():
-                st.warning("🗑️ Member Info DELETED!")
-                st.rerun()
 
 # ==========================================
 # ➕ RECORD TRANSACTIONS — TREASURER
