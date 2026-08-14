@@ -263,7 +263,7 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.session_state.user_role = USER_ROLES[username]["role"]
-                st.success(f"✅ Welcome! Logged in as: *{st.session_state.user_role}*")
+                st.success(f"✅ Welcome! Logged in as: {st.session_state.user_role}")
                 st.rerun()
             else:
                 st.error("❌ Invalid username or password")
@@ -368,8 +368,8 @@ if st.session_state.current_page == "Dashboard":
     </div>""", unsafe_allow_html=True)
 
     colA, colB = st.columns(2)
-    with colA: st.info(f"👤 Member Contribution: *₱{contrib:,.2f}*")
-    with colB: st.info(f"📝 Transactions Net: *₱{other_trans:,.2f}*")
+    with colA: st.info(f"👤 Member Contribution: ₱{contrib:,.2f}")
+    with colB: st.info(f"📝 Transactions Net: ₱{other_trans:,.2f}")
 
     st.markdown("<br><div class='rainbow-line'></div>", unsafe_allow_html=True)
     st.caption(f"🏛️ SPTYO Fund Monitor — Logged in as: {role}")
@@ -387,10 +387,10 @@ elif st.session_state.current_page == "Transactions":
             col1, col2, col3, col4 = st.columns([3, 1.5, 2, 2])
             status = row.get("status", "Approved")
             status_icon = "🟢" if status == "Approved" else "🟡" if status == "Pending Approval" else "🔴"
-            with col1: st.markdown(f"*{row['date']}*  \n{row['description']}")
-            with col2: st.markdown(f"*{row['type']}*")
-            with col3: st.markdown(f"*₱{float(row['amount']):,.2f}*")
-            with col4: st.markdown(f"{status_icon} *{status}*")
+            with col1: st.markdown(f"{row['date']}  \n{row['description']}")
+            with col2: st.markdown(f"{row['type']}")
+            with col3: st.markdown(f"₱{float(row['amount']):,.2f}")
+            with col4: st.markdown(f"{status_icon} {status}")
             st.markdown("---")
     else:
         st.info("📭 No transactions yet.")
@@ -463,7 +463,7 @@ elif st.session_state.current_page == "Submit Request":
         for req in requests:
             status = req.get("status", "Pending")
             icon = "⏳" if status == "Pending" else "✅" if status == "Approved" else "❌"
-            st.markdown(f"• *{req['title']}* — ₱{float(req['amount']):,.2f} — {icon}*{status}**")
+            st.markdown(f"• {req['title']} — ₱{float(req['amount']):,.2f} — {icon}*{status}**")
     else:
         st.info("📭 No submitted requests yet.")
 
@@ -546,8 +546,8 @@ elif st.session_state.current_page == "Financial Reports":
     st.divider()
     st.subheader("👤 Member Information")
     member = get_member_info()
-    st.markdown(f"*Name:* {member.get('name', 'Not Set')}")
-    st.markdown(f"*Position:* {member.get('position', 'Not Set')}")
+    st.markdown(f"Name: {member.get('name', 'Not Set')}")
+    st.markdown(f"Position: {member.get('position', 'Not Set')}")
     st.metric("Contribution Amount", f"₱{contrib:,.2f}")
 
 # ==========================================
@@ -652,7 +652,7 @@ elif st.session_state.current_page == "Polls":
                         st.success("✅ Vote Recorded!")
                         st.rerun()
                 with colB:
-                    st.markdown(f"*{pct}%*")  # ✅ No more error!
+                    st.markdown(f"**{pct}%**")  # ✅ No more error!
             st.markdown("---")
     else:
         st.info("📭 No polls yet.")
