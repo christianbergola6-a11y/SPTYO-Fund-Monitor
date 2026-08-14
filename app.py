@@ -97,7 +97,7 @@ st.markdown(f"""
         display:inline-block; background:{RED_ACCENT}; color:white;
         padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:bold; margin-left:8px;
     }}
-    /* ========== 🔔 BELL NOTIFICATION — TOP RIGHT CORNER ========== */
+    /* 🔔 BELL NOTIFICATION — TOP RIGHT CORNER */
     .bell-container {{
         position: fixed; top: 15px; right: 25px; z-index: 999999;
         cursor: pointer;
@@ -152,6 +152,11 @@ st.markdown(f"""
     }}
     .member-card-vp {{border-left-color: #4285F4;}}
     .member-card-president {{border-left-color: #ffd700;}}
+    .readonly-badge {{
+        display: inline-block; background: #e3f2fd; color: #1565c0;
+        padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold;
+        margin-bottom: 1rem;
+    }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -285,7 +290,7 @@ def delete_member(member_id):
         return False
 
 # ==========================================
-# 📅 EVENTS
+# 📅 EVENTS — UPDATED
 # ==========================================
 def get_all_events():
     res = supabase.table("events").select("*").order("event_date").execute()
@@ -426,7 +431,7 @@ if not st.session_state.logged_in:
 show_bell_notification()
 
 # ==========================================
-# 🧭 SIDEBAR
+# 🧭 SIDEBAR — UPDATED: Events Button for ALL Roles
 # ==========================================
 role = st.session_state.user_role
 username = st.session_state.username
@@ -463,7 +468,7 @@ with st.sidebar:
             st.session_state.current_page = "Transactions"; st.rerun()
         if st.button("📤 Submit Request", use_container_width=True):
             st.session_state.current_page = "Submit Request"; st.rerun()
-        if st.button("📅 Events & Projects", use_container_width=True):
+        if st.button("📅 Events & Projects", use_container_width=True):  # ✅ NOW VISIBLE
             st.session_state.current_page = "Events"; st.rerun()
         if st.button(f"📢 Announcements{ann_badge}", use_container_width=True):
             st.session_state.current_page = "Announcements"; st.rerun()
@@ -477,6 +482,8 @@ with st.sidebar:
             st.session_state.current_page = "Financial Reports"; st.rerun()
         if st.button("👤 Manage Members", use_container_width=True):
             st.session_state.current_page = "Manage Members"; st.rerun()
+        if st.button("📅 Events & Projects", use_container_width=True):  # ✅ NOW VISIBLE
+            st.session_state.current_page = "Events"; st.rerun()
         if st.button(f"📢 Announcements{ann_badge}", use_container_width=True):
             st.session_state.current_page = "Announcements"; st.rerun()
 
@@ -485,6 +492,8 @@ with st.sidebar:
             st.session_state.current_page = "Dashboard"; st.rerun()
         if st.button("👤 My Contribution", use_container_width=True):
             st.session_state.current_page = "My Contribution"; st.rerun()
+        if st.button("📅 Events & Projects", use_container_width=True):  # ✅ NOW VISIBLE
+            st.session_state.current_page = "Events"; st.rerun()
         if st.button("🗳️ Polls", use_container_width=True):
             st.session_state.current_page = "Polls"; st.rerun()
         if st.button(f"📢 Announcements{ann_badge}", use_container_width=True):
@@ -557,7 +566,7 @@ elif st.session_state.current_page == "Transactions":
                         if delete_member(m['id']):
                             st.success(f"✅ Deleted {m.get('name')}!")
                             st.rerun()
-        st.markdown(f"### 💰 Total: *₱{total_contrib:,.2f}*")
+        st.markdown(f"### 💰 Total:*₱{total_contrib:,.2f}**")
     else:
         st.info("📭 No members added yet.")
 
@@ -752,14 +761,16 @@ elif st.session_state.current_page == "My Contribution":
         st.markdown(f"### 💰 Total:*₱{get_total_contribution():,.2f}**")
 
 # ==========================================
-# 📅 EVENTS
+# 📅 EVENTS & PROJECTS — UPDATED: VIEW-ONLY FOR NON-PRESIDENT
 # ==========================================
 elif st.session_state.current_page == "Events":
     st.markdown("<h2>📅 Events & Projects</h2>", unsafe_allow_html=True)
     st.divider()
     current_balance = get_total_balance()
-    if role in ["President", "Vice President"]:
-        with st.expander("➕ Add New Event / Project"):
+
+    # 👑 PRESIDENT: CAN ADD NEW EVENTS
+    if role == "President":
+        with st.expander("➕ Add New Event / Project", expanded=False):
             with st.form("add_event_form", clear_on_submit=True):
                 col1, col2 = st.columns(2)
                 with col1: event_name = st.text_input("📌 Event / Project Name")
@@ -770,6 +781,11 @@ elif st.session_state.current_page == "Events":
                     add_event(event_name, event_date, goal_amt, details)
                     st.success(f"✅ Added: {event_name}")
                     st.rerun()
+    else:
+        # 🤝 VP / 💰 Treasurer / 👤 Member: VIEW-ONLY NOTICE
+        st.markdown("<div class='readonly-badge'>👁️ View-Only — Events managed by President</div>", unsafe_allow_html=True)
+
+    # 📋 EVERYONE: VIEW ALL EVENTS & FUND GOALS
     events = get_all_events()
     st.subheader("🎯 Event Fund Goals")
     if events:
@@ -777,6 +793,7 @@ elif st.session_state.current_page == "Events":
             goal = float(evt["goal_amount"])
             progress_pct = min(100.0, round((current_balance / goal * 100), 1)) if goal > 0 else 0.0
             bar_color = GREEN_ACCENT if progress_pct >= 100 else YELLOW_ACCENT if progress_pct >= 50 else RED_ACCENT
+
             col_info, col_del = st.columns([9, 1])
             with col_info:
                 st.markdown(f"""
@@ -790,6 +807,7 @@ elif st.session_state.current_page == "Events":
                     <p style='font-size:0.9rem; color:#666; margin-top:0.4rem;'>{evt.get('details', '')}</p>
                 </div>
                 """, unsafe_allow_html=True)
+            # 👑 ONLY PRESIDENT: DELETE BUTTON
             with col_del:
                 if role == "President":
                     if st.button("🗑️", key=f"del_evt_{evt['id']}", help="Delete this event"):
@@ -858,13 +876,12 @@ elif st.session_state.current_page == "Polls":
         st.info("📭 No polls yet.")
 
 # ==========================================
-# 📢 ANNOUNCEMENTS — MAIN PAGE
+# 📢 ANNOUNCEMENTS
 # ==========================================
 elif st.session_state.current_page == "Announcements":
     st.markdown("<h2>📢 Announcements</h2>", unsafe_allow_html=True)
     st.divider()
 
-    # ✅ PRESIDENT: CREATE NEW ANNOUNCEMENT
     if role == "President":
         with st.expander("➕ Post New Announcement", expanded=True):
             with st.form("ann_form", clear_on_submit=True):
@@ -876,7 +893,6 @@ elif st.session_state.current_page == "Announcements":
                         st.balloons()
                         st.rerun()
 
-    # ✅ EVERYONE: VIEW ALL ANNOUNCEMENTS
     announcements = get_all_announcements()
     if not announcements:
         st.info("📭 No announcements yet. President will post updates here!")
@@ -905,7 +921,6 @@ elif st.session_state.current_page == "Announcements":
                             st.success("✅ Announcement deleted!")
                             st.rerun()
 
-            # Mark as seen when viewed
             if is_new and role != "President":
                 mark_as_seen(ann['id'])
 
