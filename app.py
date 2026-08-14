@@ -100,21 +100,32 @@ st.markdown(f"""
     .role-treasurer {{background: #34A853; color: white;}}
     .role-member {{background: #9e9e9e; color: white;}}
     .voted-tag {{background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 10px; font-size: 0.85rem; font-weight:bold;}}
-    .member-info-box {{
-        background:#e8f5e9; padding:1rem; border-radius:12px;
-        border-left:4px solid #34A853; margin-bottom:1rem;
+    .member-card {{
+        background:#FFFFFF; padding:0.8rem; border-radius:10px;
+        border-left:4px solid #34A853; margin:0.5rem 0;
+        box-shadow:1px 2px 4px rgba(0,0,0,0.05);
     }}
+    .member-card-vp {{border-left-color: #4285F4;}}
+    .member-card-president {{border-left-color: #ffd700;}}
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🔗 CALCULATIONS
+# 🔗 CALCULATIONS — NOW SUMS ALL MEMBERS
 # ==========================================
-def get_member_contribution():
+def get_all_members():
+    """✅ Get ALL members — returns list, not just one"""
     try:
-        res = supabase.table("member").select("contribution").eq("id", 1).execute()
-        return float(res.data[0]["contribution"]) if res.data else 0.0
-    except: return 0.0
+        res = supabase.table("member").select("*").order("contribution", desc=True).execute()
+        return res.data if res.data else []
+    except Exception as e:
+        st.error(f"❌ Failed to load members: {e}")
+        return []
+
+def get_total_contribution():
+    """✅ SUM of ALL members' contributions"""
+    members = get_all_members()
+    return round(sum(float(m.get("contribution", 0)) for m in members), 2)
 
 def get_transaction_net():
     try:
@@ -125,7 +136,7 @@ def get_transaction_net():
     except: return 0.0
 
 def get_total_balance():
-    return round(get_member_contribution() + get_transaction_net(), 2)
+    return round(get_total_contribution() + get_transaction_net(), 2)
 
 # ==========================================
 # 📊 TRANSACTIONS
@@ -171,37 +182,43 @@ def update_request_status(request_id, new_status):
     supabase.table("requests").update({"status": new_status, "reviewed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}).eq("id", request_id).execute()
 
 # ==========================================
-# 👤 MEMBER INFO — SAVE + DELETE FUNCTIONS
+# 👤 MEMBER FUNCTIONS — ADD, EDIT, DELETE
 # ==========================================
-def save_member_info(name, position, contribution):
+def add_member(name, position, contribution):
+    """✅ ADD NEW MEMBER — does NOT replace old ones!"""
     try:
-        supabase.table("member").upsert(
-            {"id": 1, "name": name, "position": position, "contribution": float(contribution)},
-            on_conflict="id"
-        ).execute()
+        supabase.table("member").insert({
+            "name": name,
+            "position": position,
+            "contribution": float(contribution),
+            "added_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }).execute()
         return True
     except Exception as e:
-        st.error(f"❌ Failed to save: {e}")
+        st.error(f"❌ Failed to add: {e}")
         return False
 
-def delete_member_info():
-    """🗑️ DELETE MEMBER INFO — PRESIDENT ONLY"""
+def update_member(member_id, name, position, contribution):
+    """✅ EDIT EXISTING MEMBER"""
     try:
-        supabase.table("member").delete().eq("id", 1).execute()
+        supabase.table("member").update({
+            "name": name,
+            "position": position,
+            "contribution": float(contribution)
+        }).eq("id", member_id).execute()
+        return True
+    except Exception as e:
+        st.error(f"❌ Failed to update: {e}")
+        return False
+
+def delete_member(member_id):
+    """✅ DELETE SELECTED MEMBER BY ID — PRESIDENT ONLY"""
+    try:
+        supabase.table("member").delete().eq("id", member_id).execute()
         return True
     except Exception as e:
         st.error(f"❌ Failed to delete: {e}")
         return False
-
-def get_member_info():
-    try:
-        res = supabase.table("member").select("*").eq("id", 1).execute()
-        if res.data:
-            return res.data[0]
-        return {"name": "", "position": "", "contribution": 0.00}
-    except Exception as e:
-        st.error(f"❌ Failed to load: {e}")
-        return {"name": "", "position": "", "contribution": 0.00}
 
 # ==========================================
 # 📅 EVENTS — WITH DELETE FUNCTION
@@ -227,7 +244,7 @@ def delete_event(event_id):
         return False
 
 # ==========================================
-# 🗳️ POLLS — 1 VOTE PER PERSON + DELETE BUTTON
+# 🗳️ POLLS
 # ==========================================
 def get_all_polls():
     res = supabase.table("polls").select("*").order("created_at", desc=True).execute()
@@ -310,7 +327,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==========================================
-# 🧭 SIDEBAR — ✅ MANAGE MEMBERS = TREASURER ONLY
+# 🧭 SIDEBAR — MANAGE MEMBERS = TREASURER ONLY
 # ==========================================
 role = st.session_state.user_role
 username = st.session_state.username
@@ -338,7 +355,6 @@ with st.sidebar:
         if st.button("🗳️ Polls", use_container_width=True):
             st.session_state.current_page = "Polls"
             st.rerun()
-        # ❌ MANAGE MEMBERS — REMOVED FROM PRESIDENT
 
     elif role == "Vice President":
         if st.button("📊 Dashboard", use_container_width=True):
@@ -353,7 +369,6 @@ with st.sidebar:
         if st.button("📅 Events & Projects", use_container_width=True):
             st.session_state.current_page = "Events"
             st.rerun()
-        # ❌ MANAGE MEMBERS — REMOVED FROM VP
 
     elif role == "Treasurer":
         if st.button("📊 Dashboard", use_container_width=True):
@@ -365,7 +380,6 @@ with st.sidebar:
         if st.button("📈 Financial Reports", use_container_width=True):
             st.session_state.current_page = "Financial Reports"
             st.rerun()
-        # ✅ MANAGE MEMBERS — TREASURER ONLY
         if st.button("👤 Manage Members", use_container_width=True):
             st.session_state.current_page = "Manage Members"
             st.rerun()
@@ -392,11 +406,11 @@ with st.sidebar:
         st.rerun()
 
 # ==========================================
-# 📊 DASHBOARD — ALL ROLES
+# 📊 DASHBOARD — SHOWS TOTAL OF ALL MEMBERS
 # ==========================================
 if st.session_state.current_page == "Dashboard":
     total_balance = get_total_balance()
-    contrib = get_member_contribution()
+    total_contrib = get_total_contribution()
     other_trans = get_transaction_net()
 
     st.markdown(f"""<div class='metric-card'>
@@ -405,40 +419,60 @@ if st.session_state.current_page == "Dashboard":
     </div>""", unsafe_allow_html=True)
 
     colA, colB = st.columns(2)
-    with colA: st.info(f"👤 Member Contribution: ₱{contrib:,.2f}")
+    with colA: st.info(f"👥 Total Contributions: ₱{total_contrib:,.2f}")
     with colB: st.info(f"📝 Transactions Net: ₱{other_trans:,.2f}")
+
+    # ✅ LIST ALL MEMBERS ON DASHBOARD
+    members = get_all_members()
+    if members:
+        st.markdown("---")
+        st.subheader("👥 All Members & Contributions")
+        for m in members:
+            pos_class = "member-card-president" if m.get("position") == "President" else "member-card-vp" if m.get("position") == "Vice President" else ""
+            st.markdown(f"""
+            <div class='member-card {pos_class}'>
+                <strong>{m.get('name', 'Unknown')}</strong> — {m.get('position', 'Member')}
+                <span style='float:right; font-weight:bold; color:#34A853;'>₱{float(m.get('contribution', 0)):,.2f}</span>
+            </div>
+            """, unsafe_allow_html=True)
 
     st.markdown("<br><div class='rainbow-line'></div>", unsafe_allow_html=True)
     st.caption(f"🏛️ SPTYO Fund Monitor — Logged in as: {role}")
 
 # ==========================================
-# 📋 TRANSACTIONS — ✅ MEMBER INFO SHOWN + PRESIDENT DELETE BUTTON
+# 📋 TRANSACTIONS — ALL MEMBERS LIST + PRESIDENT DELETE
 # ==========================================
 elif st.session_state.current_page == "Transactions":
     st.markdown("<h2>📋 Complete Transaction History</h2>", unsafe_allow_html=True)
     st.divider()
 
-    # ✅ MEMBER INFO — VISIBLE TO PRESIDENT, VP, TREASURER
-    member = get_member_info()
-    contrib = get_member_contribution()
+    # ✅ SHOW ALL MEMBERS
+    members = get_all_members()
+    total_contrib = get_total_contribution()
 
-    col_info, col_del_btn = st.columns([4, 1])
-    with col_info:
-        st.markdown(f"""
-        <div class='member-info-box'>
-            <h4 style='margin:0;'>👤 Member Contribution</h4>
-            <p style='font-size:1.1rem; margin:0.3rem 0;'><strong>{member.get('name', 'Not Set')}</strong> — {member.get('position', 'Member')}</p>
-            <p style='font-size:1.3rem; font-weight:bold; color:#34A853; margin:0;'>₱{contrib:,.2f}</p>
-        </div>
-        """, unsafe_allow_html=True)
+    st.subheader("👥 All Members & Contributions")
+    if members:
+        for m in members:
+            pos_class = "member-card-president" if m.get("position") == "President" else "member-card-vp" if m.get("position") == "Vice President" else ""
 
-    # ✅ DELETE BUTTON — PRESIDENT ONLY
-    with col_del_btn:
-        if role == "President":
-            if st.button("🗑️ Delete Member Info", type="secondary", help="Delete all member information"):
-                if delete_member_info():
-                    st.success("✅ Member Info DELETED!")
-                    st.rerun()
+            col_info, col_del = st.columns([8, 1])
+            with col_info:
+                st.markdown(f"""
+                <div class='member-card {pos_class}'>
+                    <strong>{m.get('name', 'Unknown')}</strong> — {m.get('position', 'Member')}
+                    <span style='float:right; font-weight:bold; color:#34A853;'>₱{float(m.get('contribution', 0)):,.2f}</span>
+                </div>
+                """, unsafe_allow_html=True)
+            # ✅ DELETE BUTTON — PRESIDENT ONLY
+            with col_del:
+                if role == "President":
+                    if st.button("🗑️", key=f"del_member_{m['id']}", help=f"Delete {m.get('name')}"):
+                        if delete_member(m['id']):
+                            st.success(f"✅ Deleted {m.get('name')}!")
+                            st.rerun()
+        st.markdown(f"### 💰 Total: *₱{total_contrib:,.2f}*")
+    else:
+        st.info("📭 No members added yet.")
 
     st.markdown("---")
 
@@ -457,7 +491,7 @@ elif st.session_state.current_page == "Transactions":
         st.info("📭 No transactions yet.")
 
 # ==========================================
-# 📤 EXPENSE REQUESTS — PRESIDENT (APPROVE/DENY)
+# 📤 EXPENSE REQUESTS — PRESIDENT
 # ==========================================
 elif st.session_state.current_page == "Expense Requests":
     st.markdown("<h2>📤 Expense & Project Requests — Review & Approve</h2>", unsafe_allow_html=True)
@@ -529,28 +563,43 @@ elif st.session_state.current_page == "Submit Request":
         st.info("📭 No submitted requests yet.")
 
 # ==========================================
-# 👤 MANAGE MEMBERS — TREASURER ONLY (SAVE ONLY)
+# 👤 MANAGE MEMBERS — TREASURER ONLY (ADD + EDIT)
 # ==========================================
 elif st.session_state.current_page == "Manage Members":
-    st.markdown("<h2>👤 Manage Member Information</h2>", unsafe_allow_html=True)
+    st.markdown("<h2>👤 Manage Members & Contributions</h2>", unsafe_allow_html=True)
     st.divider()
-    member = get_member_info()
 
-    with st.form("member_form"):
-        name = st.text_input("Full Name", value=member.get("name", ""))
-        position = st.text_input("Position / Role", value=member.get("position", ""))
-        contribution = st.number_input("Contribution Amount (₱)", min_value=0.0, step=100.0, value=float(member.get("contribution", 0)))
+    # ✅ ADD NEW MEMBER FORM
+    st.subheader("➕ Add New Member")
+    with st.form("add_member_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1: name = st.text_input("Full Name")
+        with col2: position = st.text_input("Position / Role")
+        contribution = st.number_input("Contribution Amount (₱)", min_value=0.0, step=10.0)
+        if st.form_submit_button("💾 Add Member") and name.strip():
+            if add_member(name.strip(), position.strip() or "Member", contribution):
+                st.success(f"✅ {name} added! Previous members still saved!")
+                st.balloons()
+                st.rerun()
 
-        submitted = st.form_submit_button("💾 Save Member Info")
+    st.markdown("---")
 
-        if submitted:
-            if not name.strip():
-                st.error("❌ Please enter a name!")
-            else:
-                if save_member_info(name, position, contribution):
-                    st.success("✅ Member Info Saved! Transactions & Dashboard updated!")
-                    st.balloons()
-                    st.rerun()
+    # ✅ EDIT EXISTING MEMBERS
+    st.subheader("✏️ Edit Existing Members")
+    members = get_all_members()
+    if not members:
+        st.info("📭 No members yet. Add one above!")
+    else:
+        for m in members:
+            with st.expander(f"📝 {m.get('name')} — {m.get('position')}"):
+                with st.form(f"edit_{m['id']}"):
+                    e_name = st.text_input("Name", value=m.get("name", ""))
+                    e_pos = st.text_input("Position", value=m.get("position", ""))
+                    e_amt = st.number_input("Contribution", min_value=0.0, step=10.0, value=float(m.get("contribution", 0)))
+                    if st.form_submit_button("✅ Update"):
+                        if update_member(m['id'], e_name.strip(), e_pos.strip(), e_amt):
+                            st.success(f"✅ Updated {e_name}!")
+                            st.rerun()
 
 # ==========================================
 # ➕ RECORD TRANSACTIONS — TREASURER
@@ -593,11 +642,11 @@ elif st.session_state.current_page == "Financial Reports":
     st.divider()
 
     total_balance = get_total_balance()
+    total_contrib = get_total_contribution()
     history = get_history()
     income = sum(float(r["amount"]) for r in history if r["type"] == "Income")
     expense = sum(float(r["amount"]) for r in history if r["type"] == "Expense" and r.get("status") == "Approved")
     pending = sum(float(r["amount"]) for r in history if r.get("status") == "Pending Approval")
-    contrib = get_member_contribution()
 
     col1, col2, col3, col4 = st.columns(4)
     with col1: st.metric("💰 Total Balance", f"₱{total_balance:,.2f}")
@@ -606,11 +655,12 @@ elif st.session_state.current_page == "Financial Reports":
     with col4: st.metric("⏳ Pending Approval", f"₱{pending:,.2f}")
 
     st.divider()
-    st.subheader("👤 Member Information")
-    member = get_member_info()
-    st.markdown(f"Name: {member.get('name', 'Not Set')}")
-    st.markdown(f"Position: {member.get('position', 'Not Set')}")
-    st.metric("Contribution Amount", f"₱{contrib:,.2f}")
+    st.subheader("👥 All Members")
+    members = get_all_members()
+    if members:
+        for m in members:
+            st.markdown(f"• *{m.get('name')}* — {m.get('position')} — ₱{float(m.get('contribution', 0)):,.2f}")
+    st.markdown(f"### 💰 Total Contributions:*₱{total_contrib:,.2f}**")
 
 # ==========================================
 # 👤 MY CONTRIBUTION — MEMBER
@@ -618,23 +668,23 @@ elif st.session_state.current_page == "Financial Reports":
 elif st.session_state.current_page == "My Contribution":
     st.markdown("<h2>👤 My Contribution</h2>", unsafe_allow_html=True)
     st.divider()
-    member = get_member_info()
-    contrib = get_member_contribution()
+    members = get_all_members()
 
-    name = member.get("name", "")
-    if not name:
-        st.info("ℹ️ Your information has not been set yet. Ask the Treasurer to set it!")
+    if not members:
+        st.info("ℹ️ No members recorded yet. Ask Treasurer to add you!")
     else:
-        st.markdown(f"""
-        <div class='metric-card'>
-            <h3>{name}</h3>
-            <p><strong>Position:</strong> {member.get('position', 'Member')}</p>
-            <p class='balance-text'>₱{contrib:,.2f}</p>
-        </div>
-        """, unsafe_allow_html=True)
+        for m in members:
+            st.markdown(f"""
+            <div class='member-card'>
+                <h4 style='margin:0;'>{m.get('name', 'Unknown')}</h4>
+                <p style='margin:0.2rem 0;'>{m.get('position', 'Member')}</p>
+                <p style='font-size:1.3rem; font-weight:bold; color:#34A853; margin:0;'>₱{float(m.get('contribution', 0)):,.2f}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        st.markdown(f"### 💰 Total: *₱{get_total_contribution():,.2f}*")
 
 # ==========================================
-# 📅 EVENTS — PRESIDENT, VP + PRESIDENT DELETE
+# 📅 EVENTS
 # ==========================================
 elif st.session_state.current_page == "Events":
     st.markdown("<h2>📅 Events & Projects</h2>", unsafe_allow_html=True)
@@ -686,7 +736,7 @@ elif st.session_state.current_page == "Events":
         st.info("📭 No events yet.")
 
 # ==========================================
-# 🗳️ POLLS — 1 VOTE PER PERSON + DELETE BUTTON
+# 🗳️ POLLS
 # ==========================================
 elif st.session_state.current_page == "Polls":
     st.markdown("<h2>🗳️ Polls & Voting</h2>", unsafe_allow_html=True)
