@@ -212,7 +212,6 @@ def create_poll(question, options):
         }
 
         response = supabase.table("polls").insert(data).execute()
-
         print("Poll created:", response.data)
         return True
 
