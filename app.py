@@ -167,7 +167,7 @@ def update_request_status(request_id, new_status):
     supabase.table("requests").update({"status": new_status, "reviewed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}).eq("id", request_id).execute()
 
 # ==========================================
-# 👤 MEMBER INFO — ✅ FIXED UPSERT + RLS COMPATIBLE
+# 👤 MEMBER INFO — SAVE + DELETE FUNCTIONS
 # ==========================================
 def save_member_info(name, position, contribution):
     try:
@@ -178,6 +178,15 @@ def save_member_info(name, position, contribution):
         return True
     except Exception as e:
         st.error(f"❌ Failed to save: {e}")
+        return False
+
+def delete_member_info():
+    """🗑️ DELETE MEMBER INFO — TREASURER ONLY"""
+    try:
+        supabase.table("member").delete().eq("id", 1).execute()
+        return True
+    except Exception as e:
+        st.error(f"❌ Failed to delete: {e}")
         return False
 
 def get_member_info():
@@ -297,7 +306,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==========================================
-# 🧭 SIDEBAR — ROLE-BASED PAGES
+# 🧭 SIDEBAR — ROLE-BASED PAGES (UPDATED)
 # ==========================================
 role = st.session_state.user_role
 username = st.session_state.username
@@ -325,9 +334,7 @@ with st.sidebar:
         if st.button("🗳️ Polls", use_container_width=True):
             st.session_state.current_page = "Polls"
             st.rerun()
-        if st.button("👤 Manage Members", use_container_width=True):
-            st.session_state.current_page = "Manage Members"
-            st.rerun()
+        # ❌ Manage Members REMOVED from President
 
     elif role == "Vice President":
         if st.button("📊 Dashboard", use_container_width=True):
@@ -342,9 +349,7 @@ with st.sidebar:
         if st.button("📅 Events & Projects", use_container_width=True):
             st.session_state.current_page = "Events"
             st.rerun()
-        if st.button("👤 Manage Members", use_container_width=True):
-            st.session_state.current_page = "Manage Members"
-            st.rerun()
+        # ❌ Manage Members REMOVED from VP
 
     elif role == "Treasurer":
         if st.button("📊 Dashboard", use_container_width=True):
@@ -355,6 +360,10 @@ with st.sidebar:
             st.rerun()
         if st.button("📈 Financial Reports", use_container_width=True):
             st.session_state.current_page = "Financial Reports"
+            st.rerun()
+        # ✅ MANAGE MEMBERS — TREASURER ONLY
+        if st.button("👤 Manage Members", use_container_width=True):
+            st.session_state.current_page = "Manage Members"
             st.rerun()
 
     elif role == "Member":
@@ -506,7 +515,7 @@ elif st.session_state.current_page == "Submit Request":
         st.info("📭 No submitted requests yet.")
 
 # ==========================================
-# 👤 MANAGE MEMBERS — PRESIDENT & VP
+# 👤 MANAGE MEMBERS — TREASURER ONLY + 🗑️ DELETE BUTTON
 # ==========================================
 elif st.session_state.current_page == "Manage Members":
     st.markdown("<h2>👤 Manage Member Information</h2>", unsafe_allow_html=True)
@@ -517,7 +526,14 @@ elif st.session_state.current_page == "Manage Members":
         name = st.text_input("Full Name", value=member.get("name", ""))
         position = st.text_input("Position / Role", value=member.get("position", ""))
         contribution = st.number_input("Contribution Amount (₱)", min_value=0.0, step=100.0, value=float(member.get("contribution", 0)))
-        if st.form_submit_button("💾 Save Member Info"):
+
+        col_save, col_del = st.columns([3, 1])
+        with col_save:
+            submitted = st.form_submit_button("💾 Save Member Info")
+        with col_del:
+            delete_clicked = st.form_submit_button("🗑️ Delete", type="secondary")
+
+        if submitted:
             if not name.strip():
                 st.error("❌ Please enter a name!")
             else:
@@ -525,6 +541,11 @@ elif st.session_state.current_page == "Manage Members":
                     st.success("✅ Member Info Saved! Dashboard updated!")
                     st.balloons()
                     st.rerun()
+
+        if delete_clicked:
+            if delete_member_info():
+                st.warning("🗑️ Member Info DELETED!")
+                st.rerun()
 
 # ==========================================
 # ➕ RECORD TRANSACTIONS — TREASURER
@@ -597,7 +618,7 @@ elif st.session_state.current_page == "My Contribution":
 
     name = member.get("name", "")
     if not name:
-        st.info("ℹ️ Your information has not been set yet. Ask the President to set it!")
+        st.info("ℹ️ Your information has not been set yet. Ask the Treasurer to set it!")
     else:
         st.markdown(f"""
         <div class='metric-card'>
