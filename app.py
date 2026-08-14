@@ -99,6 +99,7 @@ st.markdown(f"""
     .role-vp {{background: #4285F4; color: white;}}
     .role-treasurer {{background: #34A853; color: white;}}
     .role-member {{background: #9e9e9e; color: white;}}
+    .voted-tag {{background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 10px; font-size: 0.85rem; font-weight:bold;}}
     </style>
 """, unsafe_allow_html=True)
 
@@ -196,7 +197,7 @@ def add_event(name, event_date, goal_amount, details):
     supabase.table("events").insert({"name": name, "event_date": str(event_date), "goal_amount": float(goal_amount), "details": details}).execute()
 
 # ==========================================
-# 🗳️ POLLS
+# 🗳️ POLLS — ONE VOTE PER PERSON + DELETE BUTTON
 # ==========================================
 def get_all_polls():
     res = supabase.table("polls").select("*").order("created_at", desc=True).execute()
@@ -207,16 +208,13 @@ def create_poll(question, options):
         data = {
             "question": question,
             "options": options,
-            "votes": {},
+            "votes": {opt: 0 for opt in options},
+            "voters": {},  # ✅ Tracks who voted: {username: chosen_option}
             "created_at": datetime.now().isoformat()
         }
-
-        response = supabase.table("polls").insert(data).execute()
-        print("Poll created:", response.data)
+        supabase.table("polls").insert(data).execute()
         return True
-
     except Exception as e:
-        print("SUPABASE POLL ERROR:", repr(e))
         st.error(f"❌ Failed to create poll: {e}")
         return False
 
@@ -224,18 +222,35 @@ def delete_poll(poll_id):
     try:
         supabase.table("polls").delete().eq("id", poll_id).execute()
         return True
-
     except Exception as e:
-        st.error(f"❌ Failed to delete poll: {e}")
+        st.error(f"❌ Failed to delete: {e}")
         return False
 
-def vote_poll(poll_id, option):
-    # ✅ SAFE: Fetch → Update → Save back
-    res = supabase.table("polls").select("votes").eq("id", poll_id).execute()
-    if res.data:
-        votes = res.data[0].get("votes", {}) or {}
+def vote_poll(poll_id, option, username):
+    """ ONE VOTE PER USER — Can change vote later """
+    try:
+        res = supabase.table("polls").select("votes, voters").eq("id", poll_id).execute()
+        if not res.data: return False
+
+        data = res.data[0]
+        votes = data.get("votes") or {}
+        voters = data.get("voters") or {}
+
+        # If user ALREADY voted → remove old vote first
+        if username in voters:
+            old_vote = voters[username]
+            votes[old_vote] = max(0, votes.get(old_vote, 1) - 1)
+
+        # Add NEW vote
         votes[option] = votes.get(option, 0) + 1
-        supabase.table("polls").update({"votes": votes}).eq("id", poll_id).execute()
+        voters[username] = option  # Record who user voted for
+
+        # Save back to database
+        supabase.table("polls").update({"votes": votes, "voters": voters}).eq("id", poll_id).execute()
+        return True
+    except Exception as e:
+        st.error(f"❌ Voting failed: {e}")
+        return False
 
 # ==========================================
 # 🔐 LOGIN SYSTEM
@@ -273,6 +288,7 @@ if not st.session_state.logged_in:
 # 🧭 SIDEBAR — ROLE-BASED PAGES
 # ==========================================
 role = st.session_state.user_role
+username = st.session_state.username  # Current logged-in user
 role_class = {"President":"role-president", "Vice President":"role-vp", "Treasurer":"role-treasurer", "Member":"role-member"}.get(role, "")
 
 with st.sidebar:
@@ -281,7 +297,6 @@ with st.sidebar:
     st.markdown("<div class='rainbow-line'></div>", unsafe_allow_html=True)
     st.divider()
 
-    # PRESIDENT
     if role == "President":
         if st.button("📊 Dashboard", use_container_width=True):
             st.session_state.current_page = "Dashboard"
@@ -302,7 +317,6 @@ with st.sidebar:
             st.session_state.current_page = "Manage Members"
             st.rerun()
 
-    # VICE PRESIDENT
     elif role == "Vice President":
         if st.button("📊 Dashboard", use_container_width=True):
             st.session_state.current_page = "Dashboard"
@@ -320,7 +334,6 @@ with st.sidebar:
             st.session_state.current_page = "Manage Members"
             st.rerun()
 
-    # TREASURER
     elif role == "Treasurer":
         if st.button("📊 Dashboard", use_container_width=True):
             st.session_state.current_page = "Dashboard"
@@ -332,7 +345,6 @@ with st.sidebar:
             st.session_state.current_page = "Financial Reports"
             st.rerun()
 
-    # MEMBER
     elif role == "Member":
         if st.button("💰 View Balance", use_container_width=True):
             st.session_state.current_page = "Dashboard"
@@ -614,7 +626,7 @@ elif st.session_state.current_page == "Events":
         st.info("📭 No events yet.")
 
 # ==========================================
-# 🗳️ POLLS — PRESIDENT CREATE / ALL VOTE
+# 🗳️ POLLS — ONE VOTE PER PERSON + DELETE BUTTON
 # ==========================================
 elif st.session_state.current_page == "Polls":
     st.markdown("<h2>🗳️ Polls & Voting</h2>", unsafe_allow_html=True)
@@ -630,29 +642,56 @@ elif st.session_state.current_page == "Polls":
                 opt4 = st.text_input("Option 4 (optional)")
                 if st.form_submit_button("✅ Create Poll") and question and opt1 and opt2:
                     options = [o.strip() for o in [opt1, opt2, opt3, opt4] if o.strip()]
-
                     if create_poll(question, options):
                         st.success("✅ Poll Created!")
                         st.rerun()
 
     polls = get_all_polls()
     if polls:
-        for p in polls:
-            st.subheader(f"❓ {p['question']}")
-            votes = p.get("votes", {})
-            total_votes = sum(votes.values()) if votes else 0
-            for opt in p.get("options", []):
+        for idx, p in enumerate(polls):
+            poll_id = p.get("id")
+            question = p.get("question", "No question")
+            options = p.get("options", []) or []
+            votes = p.get("votes", {}) or {}
+            voters = p.get("voters", {}) or {}  # Who voted for what
+
+            # Check if CURRENT USER already voted on THIS poll
+            my_vote = voters.get(username, None)
+
+            col_q, col_del = st.columns([9, 1])
+            with col_q:
+                st.subheader(f"❓ {question}")
+                if my_vote:
+                    st.markdown(f"<span class='voted-tag'>✅ You voted: {my_vote}</span>", unsafe_allow_html=True)
+            with col_del:
+                # 🗑️ DELETE BUTTON — PRESIDENT ONLY
+                if role == "President":
+                    if st.button("🗑️", key=f"del_{poll_id}_{idx}", help="Delete this poll"):
+                        if delete_poll(poll_id):
+                            st.success("✅ Poll deleted!")
+                            st.rerun()
+
+            total_votes = sum(votes.values())
+            for opt in options:
                 count = votes.get(opt, 0)
-                # ✅ FIX: Avoid division by zero!
                 pct = round(count / total_votes * 100, 1) if total_votes > 0 else 0.0
                 colA, colB = st.columns([4, 1])
+
                 with colA:
-                    if st.button(f"🗳️ {opt} ({count} votes — {pct}%)", key=f"vote_{p['id']}_{opt}"):
-                        vote_poll(p["id"], opt)
-                        st.success("✅ Vote Recorded!")
-                        st.rerun()
+                    # ✅ Highlight the option THIS USER voted for
+                    is_my_choice = (my_vote == opt)
+                    btn_label = f"✅ {opt}" if is_my_choice else f"🗳️ {opt}"
+
+                    if st.button(f"{btn_label} ({count} votes — {pct}%)", key=f"vote_{poll_id}_{opt}"):
+                        if vote_poll(poll_id, opt, username):
+                            if is_my_choice:
+                                st.info(f"ℹ️ Your vote for '{opt}' updated!")
+                            else:
+                                st.success(f"✅ Vote recorded! You voted for '{opt}'")
+                            st.rerun()
+
                 with colB:
-                    st.markdown(f"**{pct}%**")  # ✅ No more error!
+                    st.markdown(f"**{pct}%**")
             st.markdown("---")
     else:
         st.info("📭 No polls yet.")
