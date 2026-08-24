@@ -1,6 +1,8 @@
 import streamlit as st
 from supabase import create_client, Client
 from datetime import datetime
+import base64
+from pathlib import Path
 
 # ==========================================
 # 🎨 SPTYO COLORS
@@ -21,56 +23,53 @@ SUPABASE_URL = "https://rfyonjupxgficvqjolph.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJmeW9uanVweGdmaWN2cWpvbHBoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1MDEzODgsImV4cCI6MjEwMjA3NzM4OH0.XTrHlteEeHoBaZ_HAvExDdGqwDHRjY0ubMmswz4MqQ8"
 
 # ==========================================
-# 🔐 ROLE-BASED CREDENTIALS
+# 🖼️ LOAD LOGO FOR BACKGROUND
 # ==========================================
-USER_ROLES = {
-    "president":     {"password": "Pagkakaisa2026",  "role": "President"},
-    "vicepresident": {"password": "VPSPTYO2026",     "role": "Vice President"},
-    "treasurer":     {"password": "SPTYOfunds2026",  "role": "Treasurer"},
-    "member":        {"password": "SPTYOmember2026", "role": "Member"},
-}
+def get_base64_of_image(image_path):
+    path = Path(image_path)
+    if path.exists():
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return ""
+
+logo_b64 = get_base64_of_image("sptyo_logo.png")
 
 # ==========================================
-# 🚀 CONNECT TO DATABASE
-# ==========================================
-def init_db():
-    try:
-        url = st.secrets["SUPABASE_URL"]
-        key = st.secrets["SUPABASE_KEY"]
-    except:
-        url = SUPABASE_URL
-        key = SUPABASE_KEY
-    return create_client(url, key)
-
-supabase = init_db()
-
-# ==========================================
-# 📢 GET NEW ANNOUNCEMENTS COUNT
-# ==========================================
-def get_new_announcements_count():
-    try:
-        res = supabase.table("announcements").select("id").eq("is_new", True).execute()
-        return len(res.data) if res.data else 0
-    except Exception as e:
-        print(f"Announcement count error: {e}")
-        return 0
-
-# ==========================================
-# 🎨 PAGE STYLE
+# 🎨 PAGE STYLE — LOGO AS LOGIN BACKGROUND ✅
 # ==========================================
 st.set_page_config(page_title="SPTYO Fund Monitor", page_icon="💰", layout="wide")
+
 st.markdown(f"""
     <style>
     .stApp {{background-color: {CREAM_COLOR}; color: {TEXT_COLOR};}}
+    
+    /* ===== 🖼️ LOGO AS FADED BACKGROUND WATERMARK — LOGIN PAGE ===== */
+    .stApp[data-testid="stAppViewContainer"] {{
+        background-image: url("data:image/png;base64,{logo_b64}");
+        background-repeat: no-repeat;
+        background-position: center center;
+        background-size: 65%;
+        background-attachment: fixed;
+    }}
+    
+    /* Semi-transparent overlay for readability */
+    .stApp[data-testid="stAppViewContainer"]::before {{
+        content: "";
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(248, 244, 233, 0.72);
+        z-index: -1;
+    }}
+    
     h1, h2, h3 {{color: {PRIMARY_COLOR}; font-weight: 700;}}
     .stButton>button {{
-        background: linear-gradient(90deg, {GOLD_COLOR}, {YELLOW_ACCENT});
-        color: {PRIMARY_COLOR}; border-radius: 12px; border: 2px solid {PRIMARY_COLOR};
-        font-weight: bold; padding: 0.4rem 1rem;
+        background: linear-gradient(90deg, {RED_ACCENT}, #ff5533);
+        color: white; border-radius: 12px; border: none;
+        font-weight: bold; padding: 0.5rem 1rem;
     }}
     .stButton>button[kind="secondary"] {{
-        background: linear-gradient(90deg, {RED_ACCENT}, #ff6b6b);
-        color: white; border: none;
+        background: linear-gradient(90deg, {YELLOW_ACCENT}, {GOLD_COLOR});
+        color: {PRIMARY_COLOR}; border: none;
     }}
     .metric-card {{
         background: linear-gradient(135deg, #FFFFFF, {CREAM_COLOR});
@@ -79,10 +78,10 @@ st.markdown(f"""
     }}
     .balance-text {{font-size: 2.5rem; font-weight: 900; color: {PRIMARY_COLOR};}}
     .rainbow-line {{
-        height: 6px; border-radius: 3px;
+        height: 5px; border-radius: 3px;
         background: linear-gradient(90deg, {RED_ACCENT}, {YELLOW_ACCENT}, {GREEN_ACCENT}, {BLUE_ACCENT});
     }}
-    hr {{border: none; height: 3px; background: linear-gradient(90deg, {GOLD_COLOR}, {PRIMARY_COLOR}, {GOLD_COLOR}); border-radius: 2px;}}
+    hr {{border: none; height: 3px; background: linear-gradient(90deg, {RED_ACCENT}, {YELLOW_ACCENT}, {GREEN_ACCENT}, {BLUE_ACCENT}); border-radius: 2px;}}
     .event-card {{
         background: #FFFFFF; border-left: 4px solid {GOLD_COLOR};
         border-radius: 12px; padding: 1.2rem; margin: 0.8rem 0;
@@ -161,7 +160,42 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🔔 RENDER BELL ICON
+# 🔐 ROLE-BASED CREDENTIALS
+# ==========================================
+USER_ROLES = {
+    "president":     {"password": "Pagkakaisa2026",  "role": "President"},
+    "vicepresident": {"password": "VPSPTYO2026",     "role": "Vice President"},
+    "treasurer":     {"password": "SPTYOfunds2026",  "role": "Treasurer"},
+    "member":        {"password": "SPTYOmember2026", "role": "Member"},
+}
+
+# ==========================================
+# 🚀 CONNECT TO DATABASE
+# ==========================================
+def init_db():
+    try:
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+    except:
+        url = SUPABASE_URL
+        key = SUPABASE_KEY
+    return create_client(url, key)
+
+supabase = init_db()
+
+# ==========================================
+# 📢 GET NEW ANNOUNCEMENTS COUNT
+# ==========================================
+def get_new_announcements_count():
+    try:
+        res = supabase.table("announcements").select("id").eq("is_new", True).execute()
+        return len(res.data) if res.data else 0
+    except Exception as e:
+        print(f"Announcement count error: {e}")
+        return 0
+
+# ==========================================
+# 🔔 BELL ICON
 # ==========================================
 def show_bell_notification():
     new_count = get_new_announcements_count()
@@ -415,7 +449,7 @@ def delete_announcement(ann_id):
         return False
 
 # ==========================================
-# 🔐 LOGIN SYSTEM
+# 🔐 LOGIN PAGE — LOGO AS BACKGROUND ✅
 # ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -427,11 +461,12 @@ if "username" not in st.session_state:
     st.session_state.username = None
 
 if not st.session_state.logged_in:
-    st.markdown("<h1 style='text-align:center;'>💰 SPTYO Fund Monitor</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center;'>Sitio Pagkakaisa Talented Youth — Savings Tracking System</p>", unsafe_allow_html=True)
-    st.markdown("<div class='rainbow-line'></div><br>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1,2,1])
+    col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
+        st.markdown("<h1 style='text-align:center; margin-top:2rem;'>💰 SPTYO Fund Monitor</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; font-size:1.05rem;'>Sitio Pagkakaisa Talented Youth — Savings Tracking System</p>", unsafe_allow_html=True)
+        st.markdown("<div class='rainbow-line'></div><br>", unsafe_allow_html=True)
+        
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
         if st.button("🔑 Login", use_container_width=True):
@@ -451,7 +486,7 @@ if not st.session_state.logged_in:
 show_bell_notification()
 
 # ==========================================
-# 🧭 SIDEBAR — VP & Treasurer NOW HAVE POLLS ✅
+# 🧭 SIDEBAR NAVIGATION
 # ==========================================
 role = st.session_state.user_role
 username = st.session_state.username
@@ -489,7 +524,7 @@ with st.sidebar:
             st.session_state.current_page = "Submit Request"; st.rerun()
         if st.button("📅 Events & Projects", use_container_width=True):
             st.session_state.current_page = "Events"; st.rerun()
-        if st.button("🗳️ Polls", use_container_width=True):  # ✅ ADDED
+        if st.button("🗳️ Polls", use_container_width=True):
             st.session_state.current_page = "Polls"; st.rerun()
         if st.button(f"📢 Announcements{ann_badge}", use_container_width=True):
             st.session_state.current_page = "Announcements"; st.rerun()
@@ -505,7 +540,7 @@ with st.sidebar:
             st.session_state.current_page = "Manage Members"; st.rerun()
         if st.button("📅 Events & Projects", use_container_width=True):
             st.session_state.current_page = "Events"; st.rerun()
-        if st.button("🗳️ Polls", use_container_width=True):  # ✅ ADDED
+        if st.button("🗳️ Polls", use_container_width=True):
             st.session_state.current_page = "Polls"; st.rerun()
         if st.button(f"📢 Announcements{ann_badge}", use_container_width=True):
             st.session_state.current_page = "Announcements"; st.rerun()
@@ -609,7 +644,7 @@ elif st.session_state.current_page == "Transactions":
         st.info("📭 No transactions yet.")
 
 # ==========================================
-# 📤 EXPENSE REQUESTS
+# 📤 EXPENSE REQUESTS — PRESIDENT
 # ==========================================
 elif st.session_state.current_page == "Expense Requests":
     st.markdown("<h2>📤 Expense & Project Requests — Review & Approve</h2>", unsafe_allow_html=True)
@@ -726,7 +761,7 @@ elif st.session_state.current_page == "Record Transactions":
             if t_type == "Income":
                 st.success("✅ Income Recorded!")
             else:
-                st.info("⏳ Expense Saved — Pending Approval from President/VP")
+                st.info("⏳ Expense Saved — Pending Approval from President")
             st.balloons()
             st.rerun()
         else:
@@ -837,13 +872,12 @@ elif st.session_state.current_page == "Events":
         st.info("📭 No events yet.")
 
 # ==========================================
-# 🗳️ POLLS — ✅ VP & Treasurer CAN VOTE!
+# 🗳️ POLLS
 # ==========================================
 elif st.session_state.current_page == "Polls":
     st.markdown("<h2>🗳️ Polls & Voting</h2>", unsafe_allow_html=True)
     st.divider()
 
-    # 👑 ONLY PRESIDENT CAN CREATE NEW POLL
     if role == "President":
         with st.expander("➕ Create New Poll"):
             with st.form("poll_form", clear_on_submit=True):
@@ -876,7 +910,6 @@ elif st.session_state.current_page == "Polls":
                 if my_vote:
                     st.markdown(f"<span class='voted-tag'>✅ You voted: {my_vote}</span>", unsafe_allow_html=True)
 
-            # 👑 ONLY PRESIDENT CAN DELETE POLL
             with col_del:
                 if role == "President":
                     if st.button("🗑️", key=f"del_poll_{poll_id}_{idx}", help="Delete this poll"):
@@ -893,7 +926,6 @@ elif st.session_state.current_page == "Polls":
                 btn_label = f"✅ {opt}" if is_my_choice else f"🗳️ {opt}"
 
                 with colA:
-                    # ✅ EVERYONE CAN VOTE — President, VP, Treasurer, Member
                     if st.button(f"{btn_label} ({count} votes — {pct}%)", key=f"vote_{poll_id}_{opt}"):
                         if vote_poll(poll_id, opt, username):
                             st.success(f"✅ Vote recorded! You voted for '{opt}'")
@@ -905,13 +937,11 @@ elif st.session_state.current_page == "Polls":
         st.info("📭 No polls yet.")
 
 # ==========================================
-# 📢 ANNOUNCEMENTS — ✅ FULLY COMPLETED
+# 📢 ANNOUNCEMENTS — FULLY COMPLETED ✅
 # ==========================================
 elif st.session_state.current_page == "Announcements":
     st.markdown("<h2>📢 Announcements</h2>", unsafe_allow_html=True)
     st.divider()
-
-    # 👑 PRESIDENT: CREATE NEW ANNOUNCEMENT
     if role == "President":
         with st.expander("➕ Post New Announcement", expanded=True):
             with st.form("ann_form", clear_on_submit=True):
@@ -925,7 +955,6 @@ elif st.session_state.current_page == "Announcements":
                     else:
                         st.error("❌ Failed to post! Check Supabase table.")
 
-        # 📋 EVERYONE: VIEW ALL ANNOUNCEMENTS
     announcements = get_all_announcements()
     if not announcements:
         st.info("📭 No announcements yet. President will post updates here!")
