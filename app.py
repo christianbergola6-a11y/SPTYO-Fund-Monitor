@@ -179,7 +179,7 @@ def show_bell_notification():
         """, unsafe_allow_html=True)
 
 # ==========================================
-# 🔗 CALCULATIONS
+# 🔗 DATA HELPERS
 # ==========================================
 def get_all_members():
     try:
@@ -193,19 +193,32 @@ def get_total_contribution():
     members = get_all_members()
     return round(sum(float(m.get("contribution", 0)) for m in members), 2)
 
-def get_transaction_net():
+def get_transaction_totals():
+    """Returns (total_income, total_approved_expense, total_pending_expense)"""
     try:
-        res = supabase.table("transactions1").select("amount,type,status").execute()
+        res = supabase.table("transactions1").select("amount, type, status").execute()
         income = sum(float(r["amount"]) for r in res.data if r["type"] == "Income")
-        expense = sum(float(r["amount"]) for r in res.data if r["type"] == "Expense" and r.get("status") == "Approved")
-        return income - expense
-    except: return 0.0
+        approved_expense = sum(float(r["amount"]) for r in res.data if r["type"] == "Expense" and r.get("status") == "Approved")
+        pending_expense = sum(float(r["amount"]) for r in res.data if r["type"] == "Expense" and r.get("status") == "Pending Approval")
+        return round(income, 2), round(approved_expense, 2), round(pending_expense, 2)
+    except Exception as e:
+        print(f"Transaction calc error: {e}")
+        return 0.0, 0.0, 0.0
 
 def get_total_balance():
-    return round(get_total_contribution() + get_transaction_net(), 2)
+    """💰 TOTAL SAVINGS = Member Contributions + All Income - Approved Expenses"""
+    contrib = get_total_contribution()
+    income, approved_exp, _ = get_transaction_totals()
+    return round(contrib + income - approved_exp, 2)
+
+def get_history():
+    try:
+        res = supabase.table("transactions1").select("*").order("date", desc=True).execute()
+        return res.data if res.data else []
+    except: return []
 
 # ==========================================
-# 📊 TRANSACTIONS — UPDATED with Event & Member Linking
+# 📊 TRANSACTIONS — with Event & Member Linking
 # ==========================================
 def add_transaction(desc, amount, trans_type, event_id=None, member_id=None):
     try:
@@ -224,12 +237,6 @@ def add_transaction(desc, amount, trans_type, event_id=None, member_id=None):
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
         return False
-
-def get_history():
-    try:
-        res = supabase.table("transactions1").select("*").order("date", desc=True).execute()
-        return res.data if res.data else []
-    except: return []
 
 # ==========================================
 # 📤 EXPENSE REQUESTS
@@ -257,7 +264,12 @@ def get_all_requests():
 
 def update_request_status(request_id, new_status):
     try:
-        supabase.table("requests").update({"status": new_status, "reviewed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}).eq("id", request_id).execute()
+        update_data = {"status": new_status, "reviewed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        # If approved, also add as approved expense transaction
+        if new_status == "Approved":
+            req = supabase.table("requests").select("*").eq("id", request_id).execute().data[0]
+            add_transaction(f"APPROVED: {req['title']}", req["amount"], "Expense")
+        supabase.table("requests").update(update_data).eq("id", request_id).execute()
         return True
     except: return False
 
@@ -530,20 +542,23 @@ with st.sidebar:
         st.rerun()
 
 # ==========================================
-# 📊 DASHBOARD
+# 📊 DASHBOARD — UPDATED CALCULATION
 # ==========================================
 if st.session_state.current_page == "Dashboard":
     total_balance = get_total_balance()
     total_contrib = get_total_contribution()
-    other_trans = get_transaction_net()
+    income, approved_exp, pending_exp = get_transaction_totals()
+
     st.markdown(f"""<div class='metric-card'>
         <h3 style='margin:0;'>💰 Total Savings Balance</h3>
         <p class='balance-text'>₱{total_balance:,.2f}</p>
     </div>""", unsafe_allow_html=True)
 
-    colA, colB = st.columns(2)
-    with colA: st.info(f"👥 Total Contributions: *₱{total_contrib:,.2f}*")
-    with colB: st.info(f"📝 Transactions Net: *₱{other_trans:,.2f}*")
+    colA, colB, colC = st.columns(3)
+    with colA: st.info(f"👥 Member Contributions: *₱{total_contrib:,.2f}*")
+    with colB: st.success(f"💹 Total Income: *₱{income:,.2f}*")
+    with colC: st.warning(f"📤 Approved Expenses: *₱{approved_exp:,.2f}*")
+    st.caption(f"⏳ Pending Approval: ₱{pending_exp:,.2f} (not yet deducted)")
 
     members = get_all_members()
     if members:
@@ -569,48 +584,35 @@ elif st.session_state.current_page == "Transactions":
     st.divider()
 
     members = get_all_members()
-    total_contrib = get_total_contribution()
-    st.subheader("👥 All Members & Contributions")
-    if members:
-        for m in members:
-            pos_class = "member-card-president" if m.get("position") == "President" else "member-card-vp" if m.get("position") == "Vice President" else ""
-            col_info, col_del = st.columns([8, 1])
-            with col_info:
-                st.markdown(f"""
-                <div class='member-card {pos_class}'>
-                    <strong>{m.get('name', 'Unknown')}</strong> — {m.get('position', 'Member')}
-                    <span style='float:right; font-weight:bold; color:#34A853;'>₱{float(m.get('contribution', 0)):,.2f}</span>
-                </div>
-                """, unsafe_allow_html=True)
-            with col_del:
-                if role == "President":
-                    if st.button("🗑️", key=f"del_member_{m['id']}", help=f"Delete {m.get('name')}"):
-                        if delete_member(m['id']):
-                            st.success(f"✅ Deleted {m.get('name')}!")
-                            st.rerun()
-        st.markdown(f"### 💰 Total: **₱{total_contrib:,.2f}**")
-    else:
-        st.info("📭 No members added yet.")
-
-    st.markdown("---")
     history = get_history()
     events = get_all_events()
     event_map = {e["id"]: e["name"] for e in events}
     member_map = {m["id"]: m["name"] for m in members}
 
     if history:
+        st.subheader("📝 All Recorded Transactions")
+        h_col1, h_col2, h_col3, h_col4, h_col5, h_col6 = st.columns([2, 2, 1.2, 1.5, 1.5, 1.5])
+        h_col1.markdown("**📅 Date & Time**")
+        h_col2.markdown("**📝 Description**")
+        h_col3.markdown("**📊 Type**")
+        h_col4.markdown("**💵 Amount**")
+        h_col5.markdown("**📌 Allocated To**")
+        h_col6.markdown("**✅ Status**")
+        st.markdown("---")
+
         for row in history:
-            col1, col2, col3, col4, col5 = st.columns([3, 1.2, 1.5, 1.5, 1.5])
             status = row.get("status", "Approved")
             status_icon = "🟢" if status == "Approved" else "🟡" if status == "Pending Approval" else "🔴"
             event_name = event_map.get(row.get("event_id"), "General Fund")
             member_name = member_map.get(row.get("member_id"), "—")
-            with col1: st.markdown(f"*{row['date']}*  \n{row['description']}")
-            with col2: st.markdown(f"*{row['type']}*")
-            with col3: st.markdown(f"*₱{float(row['amount']):,.2f}*")
-            with col4: st.markdown(f"📌 {event_name}")
-            with col5: st.markdown(f"👤 {member_name}")
-            st.markdown(f"{status_icon} *{status}*")
+            r_col1, r_col2, r_col3, r_col4, r_col5, r_col6 = st.columns([2, 2, 1.2, 1.5, 1.5, 1.5])
+            r_col1.markdown(f"{row['date']}")
+            r_col2.markdown(f"{row['description']}")
+            r_col3.markdown(f"*{row['type']}*")
+            amt_color = "color:green; font-weight:bold;" if row["type"] == "Income" else "color:red; font-weight:bold;"
+            r_col4.markdown(f"<span style='{amt_color}'>₱{float(row['amount']):,.2f}</span>", unsafe_allow_html=True)
+            r_col5.markdown(f"{event_name}")
+            r_col6.markdown(f"{status_icon} {status}")
             st.markdown("---")
     else:
         st.info("📭 No transactions yet.")
@@ -641,7 +643,7 @@ elif st.session_state.current_page == "Expense Requests":
                 with colA:
                     if st.button("✅ APPROVE", key=f"ok_{req['id']}"):
                         update_request_status(req['id'], "Approved")
-                        st.success("✅ Request APPROVED!")
+                        st.success("✅ Request APPROVED! Expense recorded.")
                         st.rerun()
                 with colB:
                     if st.button("❌ DENY", key=f"no_{req['id']}", type="secondary"):
@@ -695,7 +697,7 @@ elif st.session_state.current_page == "Manage Members":
         contribution = st.number_input("Contribution Amount (₱)", min_value=0.0, step=10.0)
         if st.form_submit_button("💾 Add Member") and name.strip():
             if add_member(name.strip(), position.strip() or "Member", contribution):
-                st.success(f"✅ {name} added!")
+                st.success(f"✅ {name} added! Contribution included in Total Balance.")
                 st.balloons()
                 st.rerun()
     st.markdown("---")
@@ -712,24 +714,22 @@ elif st.session_state.current_page == "Manage Members":
                     e_amt = st.number_input("Contribution", min_value=0.0, step=10.0, value=float(m.get("contribution", 0)))
                     if st.form_submit_button("✅ Update"):
                         if update_member(m['id'], e_name.strip(), e_pos.strip(), e_amt):
-                            st.success(f"✅ Updated {e_name}!")
+                            st.success(f"✅ Updated {e_name}! Balance recalculated.")
                             st.rerun()
 
 # ==========================================
-# ➕ RECORD TRANSACTIONS — TREASURER — WITH EVENT & MEMBER SELECTION
+# ➕ RECORD TRANSACTIONS — TREASURER
 # ==========================================
 elif st.session_state.current_page == "Record Transactions":
     st.markdown("<h2>➕ Record Income & Expenses</h2>", unsafe_allow_html=True)
     st.divider()
 
-    # Load data for dropdowns
     events = get_all_events()
     members = get_all_members()
 
-    # Build dropdown options
     event_options = ["— General Fund —"] + [e["name"] for e in events]
     event_ids = [None] + [e["id"] for e in events]
-    member_options = ["— Not Linked to Specific Member —"] + [m["name"] for m in members]
+    member_options = ["— Not Linked —"] + [m["name"] for m in members]
     member_ids = [None] + [m["id"] for m in members]
 
     with st.form("entry_form", clear_on_submit=True):
@@ -741,12 +741,12 @@ elif st.session_state.current_page == "Record Transactions":
 
         st.markdown("#### 🔗 Allocation")
         sel_event_idx = st.selectbox(
-            "📌 This money goes to which Event / Project?",
+            "📌 Event / Project",
             range(len(event_options)),
             format_func=lambda i: event_options[i]
         )
         sel_member_idx = st.selectbox(
-            "👤 Related to which Member?",
+            "👤 Related Member",
             range(len(member_options)),
             format_func=lambda i: member_options[i]
         )
@@ -760,9 +760,9 @@ elif st.session_state.current_page == "Record Transactions":
 
         if add_transaction(desc, amount, t_type, selected_event_id, selected_member_id):
             if t_type == "Income":
-                st.success("✅ Income Recorded!")
+                st.success(f"✅ Income Recorded! +₱{amount:,.2f} added to Total Balance.")
             else:
-                st.info("⏳ Expense Saved — Pending Approval from President/VP")
+                st.info(f"⏳ Expense Saved — ₱{amount:,.2f} pending approval")
             st.balloons()
             st.rerun()
         else:
@@ -777,31 +777,74 @@ elif st.session_state.current_page == "Record Transactions":
     for row in history:
         status = row.get("status", "Approved")
         event_name = event_map.get(row.get("event_id"), "General Fund")
-        member_name = member_map.get(row.get("member_id"), "—")
-        st.markdown(f"• {row['date']} — {row['description']} — ₱{float(row['amount']):,.2f} — **{status}**  \n📌 {event_name} | 👤 {member_name}")
+        st.markdown(f"📅 {row['date']} | {row['description']} | ₱{float(row['amount']):,.2f} | **{status}** | 📌 {event_name}")
 
 # ==========================================
-# 📈 FINANCIAL REPORTS — TREASURER
+# 📈 FINANCIAL REPORTS — DATE/TIME + BALANCE INTEGRATED
 # ==========================================
 elif st.session_state.current_page == "Financial Reports":
     st.markdown("<h2>📈 Financial Reports</h2>", unsafe_allow_html=True)
     st.divider()
+
     total_balance = get_total_balance()
     total_contrib = get_total_contribution()
+    income, approved_exp, pending_exp = get_transaction_totals()
     history = get_history()
-    income = sum(float(r["amount"]) for r in history if r["type"] == "Income")
-    expense = sum(float(r["amount"]) for r in history if r["type"] == "Expense" and r.get("status") == "Approved")
-    pending = sum(float(r["amount"]) for r in history if r.get("status") == "Pending Approval")
+    events = get_all_events()
+    members = get_all_members()
+    event_map = {e["id"]: e["name"] for e in events}
+    member_map = {m["id"]: m["name"] for m in members}
 
+    # ========== SUMMARY METRICS ==========
     col1, col2, col3, col4 = st.columns(4)
-    with col1: st.metric("💰 Total Balance", f"₱{total_balance:,.2f}")
-    with col2: st.metric("💹 Total Income", f"₱{income:,.2f}")
-    with col3: st.metric("📤 Approved Expenses", f"₱{expense:,.2f}")
-    with col4: st.metric("⏳ Pending Approval", f"₱{pending:,.2f}")
+    with col1:
+        st.metric("💰 Total Savings Balance", f"₱{total_balance:,.2f}")
+        st.caption("Contributions + Income - Approved Expenses")
+    with col2:
+        st.metric("💹 Total Income", f"₱{income:,.2f}")
+    with col3:
+        st.metric("📤 Approved Expenses", f"₱{approved_exp:,.2f}")
+    with col4:
+        st.metric("⏳ Pending Approval", f"₱{pending_exp:,.2f}")
+
+    st.info(f"👥 Member Contributions: ₱{total_contrib:,.2f}")
 
     st.divider()
-    st.subheader("👥 All Members")
-    members = get_all_members()
+
+    # ========== DETAILED TRANSACTION LIST WITH DATE & TIME ==========
+    st.subheader("📋 Detailed Transaction Record")
+    if history:
+        h_col1, h_col2, h_col3, h_col4, h_col5, h_col6 = st.columns([2, 2, 1.2, 1.5, 1.5, 1.5])
+        h_col1.markdown("**📅 Date & Time**")
+        h_col2.markdown("**📝 Description**")
+        h_col3.markdown("**📊 Type**")
+        h_col4.markdown("**💵 Amount**")
+        h_col5.markdown("**📌 Allocated To**")
+        h_col6.markdown("**✅ Status**")
+        st.markdown("---")
+
+        for row in history:
+            status = row.get("status", "Approved")
+            status_icon = "🟢" if status == "Approved" else "🟡" if status == "Pending Approval" else "🔴"
+            event_name = event_map.get(row.get("event_id"), "General Fund")
+            member_name = member_map.get(row.get("member_id"), "—")
+
+            r_col1, r_col2, r_col3, r_col4, r_col5, r_col6 = st.columns([2, 2, 1.2, 1.5, 1.5, 1.5])
+            r_col1.markdown(f"{row['date']}")
+            r_col2.markdown(f"{row['description']}")
+            r_col3.markdown(f"*{row['type']}*")
+            amount_color = "color:green; font-weight:bold;" if row["type"] == "Income" else "color:red; font-weight:bold;"
+            r_col4.markdown(f"<span style='{amount_color}'>₱{float(row['amount']):,.2f}</span>", unsafe_allow_html=True)
+            r_col5.markdown(f"{event_name}")
+            r_col6.markdown(f"{status_icon} {status}")
+            st.markdown("---")
+    else:
+        st.info("📭 No transactions recorded yet.")
+
+    st.divider()
+
+    # ========== MEMBER SUMMARY ==========
+    st.subheader("👤 Member Contribution Summary")
     if members:
         for m in members:
             st.markdown(f"• **{m.get('name')}** — {m.get('position')} — ₱{float(m.get('contribution', 0)):,.2f}")
@@ -896,8 +939,8 @@ elif st.session_state.current_page == "Polls":
                 opt3 = st.text_input("Option 3 (optional)")
                 opt4 = st.text_input("Option 4 (optional)")
                 if st.form_submit_button("✅ Create Poll") and question and opt1 and opt2:
-                    options = [o.strip() for o in [opt1, opt2, opt3, opt4] if o.strip()]
-                    if create_poll(question, options):
+                     options = [o.strip() for o in [opt1, opt2, opt3, opt4] if o.strip()]
+                     if create_poll(question, options):
                         st.success("✅ Poll Created!")
                         st.rerun()
     else:
@@ -909,48 +952,55 @@ elif st.session_state.current_page == "Polls":
             poll_id = p.get("id")
             question = p.get("question", "No question")
             options = p.get("options", []) or []
-            votes = p.get("votes", {}) or {}
+            votes = p.get("votes", {opt: 0 for opt in options})
             voters = p.get("voters", {}) or {}
-            my_vote = voters.get(username, None)
 
-            col_q, col_del = st.columns([9, 1])
-            with col_q:
-                st.subheader(f"❓ {question}")
-                if my_vote:
-                    st.markdown(f"<span class='voted-tag'>✅ You voted: {my_vote}</span>", unsafe_allow_html=True)
-            with col_del:
-                if role == "President":
-                    if st.button("🗑️", key=f"del_poll_{poll_id}_{idx}", help="Delete this poll"):
-                        if delete_poll(poll_id):
-                            st.success("✅ Poll deleted!")
-                            st.rerun()
-
+            st.markdown(f"### {idx+1}. {question}")
             total_votes = sum(votes.values())
-            for opt in options:
-                count = votes.get(opt, 0)
-                pct = round(count / total_votes * 100, 1) if total_votes > 0 else 0.0
-                colA, colB = st.columns([4, 1])
-                is_my_choice = (my_vote == opt)
-                btn_label = f"✅ {opt}" if is_my_choice else f"🗳️ {opt}"
-                with colA:
-                    if st.button(f"{btn_label} ({count} votes — {pct}%)", key=f"vote_{poll_id}_{opt}"):
-                        if vote_poll(poll_id, opt, username):
-                            st.success(f"✅ Vote recorded! You voted for '{opt}'")
+
+            # Check if current user already voted
+            user_voted = st.session_state.username in voters
+            voted_for = voters.get(st.session_state.username, None)
+
+            if not user_voted:
+                with st.form(f"vote_{poll_id}"):
+                    choice = st.radio("Select your vote:", options, key=f"radio_{poll_id}")
+                    if st.form_submit_button("🗳️ Cast Vote"):
+                        if vote_poll(poll_id, choice, st.session_state.username):
+                            st.success("✅ Vote recorded!")
                             st.rerun()
-                with colB:
-                    st.markdown(f"**{pct}%**")
+            else:
+                st.markdown(f"<span class='voted-tag'>✅ You voted for: {voted_for}</span>", unsafe_allow_html=True)
+
+            # Show results
+            for opt in options:
+                v = votes.get(opt, 0)
+                pct = round((v / total_votes * 100), 1) if total_votes > 0 else 0
+                bar_color = GREEN_ACCENT if pct >= 50 else YELLOW_ACCENT
+                st.markdown(f"**{opt}** — {v} vote(s) ({pct}%)")
+                st.markdown(f"""
+                <div class='progress-bar-container'>
+                    <div class='progress-bar-fill' style='width:{pct}%; background:{bar_color};'>{pct}%</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            if role == "President":
+                if st.button("🗑️ Delete Poll", key=f"del_poll_{poll_id}"):
+                    if delete_poll(poll_id):
+                        st.success("✅ Poll deleted!")
+                        st.rerun()
             st.markdown("---")
     else:
-        st.info("📭 No polls yet.")
+        st.info("📭 No polls created yet.")
 
 # ==========================================
-# 📢 ANNOUNCEMENTS — CONTINUED & COMPLETED
+# 📢 ANNOUNCEMENTS — COMPLETE
 # ==========================================
 elif st.session_state.current_page == "Announcements":
     st.markdown("<h2>📢 Announcements</h2>", unsafe_allow_html=True)
     st.divider()
 
-    # 👑 PRESIDENT: CREATE NEW ANNOUNCEMENT
+    # PRESIDENT: CREATE NEW ANNOUNCEMENT
     if role == "President":
         with st.expander("➕ Post New Announcement", expanded=True):
             with st.form("ann_form", clear_on_submit=True):
@@ -964,7 +1014,7 @@ elif st.session_state.current_page == "Announcements":
                     else:
                         st.error("❌ Failed to post! Check Supabase table.")
 
-    # 📋 EVERYONE: VIEW ALL ANNOUNCEMENTS
+    # EVERYONE: VIEW ALL ANNOUNCEMENTS
     announcements = get_all_announcements()
     if not announcements:
         st.info("📭 No announcements yet. President will post updates here!")
@@ -987,7 +1037,7 @@ elif st.session_state.current_page == "Announcements":
                 </div>
                 """, unsafe_allow_html=True)
 
-            # 👑 ONLY PRESIDENT SEES DELETE BUTTON
+            # ONLY PRESIDENT SEES DELETE BUTTON
             with col_del:
                 if role == "President":
                     if st.button("🗑️", key=f"del_ann_{ann['id']}", help="Delete this announcement"):
@@ -995,6 +1045,12 @@ elif st.session_state.current_page == "Announcements":
                             st.success("✅ Announcement deleted!")
                             st.rerun()
 
-            # ✅ MARK AS SEEN — ONLY FOR NON-PRESIDENTS
+            # MARK AS SEEN — FOR NON-PRESIDENTS
             if is_new and role != "President":
                 mark_as_seen(ann["id"])
+
+# ==========================================
+# 📄 FOOTER — ALWAYS SHOWN
+# ==========================================
+st.markdown("<br><div class='rainbow-line'></div>", unsafe_allow_html=True)
+st.caption("🏛️ SPTYO Fund Monitor — Sitio Pagkakaisa Talented Youth | All data secured on Supabase")
