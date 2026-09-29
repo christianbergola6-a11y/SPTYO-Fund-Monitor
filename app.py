@@ -217,8 +217,14 @@ def get_history():
         return res.data if res.data else []
     except: return []
 
+def get_all_events():
+    try:
+        res = supabase.table("events").select("*").order("event_date").execute()
+        return res.data if res.data else []
+    except: return []
+
 # ==========================================
-# 📊 TRANSACTIONS — with Event & Member Linking
+# 📊 TRANSACTIONS — WITH EVENT & MEMBER ALLOCATION
 # ==========================================
 def add_transaction(desc, amount, trans_type, event_id=None, member_id=None):
     try:
@@ -253,7 +259,7 @@ def submit_request(title, purpose, amount, requested_by):
         }).execute()
         return True
     except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
+        st.error(f"❌ Error: {e}")
         return False
 
 def get_all_requests():
@@ -265,7 +271,6 @@ def get_all_requests():
 def update_request_status(request_id, new_status):
     try:
         update_data = {"status": new_status, "reviewed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-        # If approved, also add as approved expense transaction
         if new_status == "Approved":
             req = supabase.table("requests").select("*").eq("id", request_id).execute().data[0]
             add_transaction(f"APPROVED: {req['title']}", req["amount"], "Expense")
@@ -312,12 +317,6 @@ def delete_member(member_id):
 # ==========================================
 # 📅 EVENTS
 # ==========================================
-def get_all_events():
-    try:
-        res = supabase.table("events").select("*").order("event_date").execute()
-        return res.data if res.data else []
-    except: return []
-
 def add_event(name, event_date, goal_amount, details):
     try:
         supabase.table("events").insert({
@@ -542,7 +541,7 @@ with st.sidebar:
         st.rerun()
 
 # ==========================================
-# 📊 DASHBOARD — UPDATED CALCULATION
+# 📊 DASHBOARD
 # ==========================================
 if st.session_state.current_page == "Dashboard":
     total_balance = get_total_balance()
@@ -577,7 +576,7 @@ if st.session_state.current_page == "Dashboard":
     st.caption(f"🏛️ SPTYO Fund Monitor — Logged in as: {role}")
 
 # ==========================================
-# 📋 TRANSACTIONS
+# 📋 TRANSACTIONS — SHOWS ALLOCATED EVENT
 # ==========================================
 elif st.session_state.current_page == "Transactions":
     st.markdown("<h2>📋 Complete Transaction History</h2>", unsafe_allow_html=True)
@@ -596,7 +595,7 @@ elif st.session_state.current_page == "Transactions":
         h_col2.markdown("**📝 Description**")
         h_col3.markdown("**📊 Type**")
         h_col4.markdown("**💵 Amount**")
-        h_col5.markdown("**📌 Allocated To**")
+        h_col5.markdown("**🎯 Allocated To**")
         h_col6.markdown("**✅ Status**")
         st.markdown("---")
 
@@ -611,7 +610,7 @@ elif st.session_state.current_page == "Transactions":
             r_col3.markdown(f"*{row['type']}*")
             amt_color = "color:green; font-weight:bold;" if row["type"] == "Income" else "color:red; font-weight:bold;"
             r_col4.markdown(f"<span style='{amt_color}'>₱{float(row['amount']):,.2f}</span>", unsafe_allow_html=True)
-            r_col5.markdown(f"{event_name}")
+            r_col5.markdown(f"🎯 {event_name}")
             r_col6.markdown(f"{status_icon} {status}")
             st.markdown("---")
     else:
@@ -718,7 +717,7 @@ elif st.session_state.current_page == "Manage Members":
                             st.rerun()
 
 # ==========================================
-# ➕ RECORD TRANSACTIONS — TREASURER
+# ➕ RECORD TRANSACTIONS — SELECT EVENT/PROJECT
 # ==========================================
 elif st.session_state.current_page == "Record Transactions":
     st.markdown("<h2>➕ Record Income & Expenses</h2>", unsafe_allow_html=True)
@@ -727,6 +726,7 @@ elif st.session_state.current_page == "Record Transactions":
     events = get_all_events()
     members = get_all_members()
 
+    # Build dropdown options with IDs
     event_options = ["— General Fund —"] + [e["name"] for e in events]
     event_ids = [None] + [e["id"] for e in events]
     member_options = ["— Not Linked —"] + [m["name"] for m in members]
@@ -739,14 +739,14 @@ elif st.session_state.current_page == "Record Transactions":
 
         trans_type = st.radio("Transaction Type", ["💹 Income", "📤 Expense"], horizontal=True)
 
-        st.markdown("#### 🔗 Allocation")
+        st.markdown("#### 🎯 Allocate To Project / Event")
         sel_event_idx = st.selectbox(
-            "📌 Event / Project",
+            "Select Event / Project",
             range(len(event_options)),
             format_func=lambda i: event_options[i]
         )
         sel_member_idx = st.selectbox(
-            "👤 Related Member",
+            "👤 Related Member (Optional)",
             range(len(member_options)),
             format_func=lambda i: member_options[i]
         )
@@ -757,12 +757,13 @@ elif st.session_state.current_page == "Record Transactions":
         t_type = "Income" if "Income" in trans_type else "Expense"
         selected_event_id = event_ids[sel_event_idx]
         selected_member_id = member_ids[sel_member_idx]
+        selected_event_name = event_options[sel_event_idx]
 
         if add_transaction(desc, amount, t_type, selected_event_id, selected_member_id):
             if t_type == "Income":
-                st.success(f"✅ Income Recorded! +₱{amount:,.2f} added to Total Balance.")
+                st.success(f"✅ Income Recorded under **{selected_event_name}**! +₱{amount:,.2f} added to Total Balance.")
             else:
-                st.info(f"⏳ Expense Saved — ₱{amount:,.2f} pending approval")
+                st.info(f"⏳ Expense Saved under **{selected_event_name}** — ₱{amount:,.2f} pending approval")
             st.balloons()
             st.rerun()
         else:
@@ -772,15 +773,14 @@ elif st.session_state.current_page == "Record Transactions":
     st.subheader("📋 Recent Transactions")
     history = get_history()[:5] if get_history() else []
     event_map = {e["id"]: e["name"] for e in events}
-    member_map = {m["id"]: m["name"] for m in members}
 
     for row in history:
         status = row.get("status", "Approved")
         event_name = event_map.get(row.get("event_id"), "General Fund")
-        st.markdown(f"📅 {row['date']} | {row['description']} | ₱{float(row['amount']):,.2f} | **{status}** | 📌 {event_name}")
+        st.markdown(f"📅 {row['date']} | {row['description']} | ₱{float(row['amount']):,.2f} | **{status}** | 🎯 {event_name}")
 
 # ==========================================
-# 📈 FINANCIAL REPORTS — DATE/TIME + BALANCE INTEGRATED
+# 📈 FINANCIAL REPORTS
 # ==========================================
 elif st.session_state.current_page == "Financial Reports":
     st.markdown("<h2>📈 Financial Reports</h2>", unsafe_allow_html=True)
@@ -791,11 +791,8 @@ elif st.session_state.current_page == "Financial Reports":
     income, approved_exp, pending_exp = get_transaction_totals()
     history = get_history()
     events = get_all_events()
-    members = get_all_members()
     event_map = {e["id"]: e["name"] for e in events}
-    member_map = {m["id"]: m["name"] for m in members}
 
-    # ========== SUMMARY METRICS ==========
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("💰 Total Savings Balance", f"₱{total_balance:,.2f}")
@@ -808,10 +805,8 @@ elif st.session_state.current_page == "Financial Reports":
         st.metric("⏳ Pending Approval", f"₱{pending_exp:,.2f}")
 
     st.info(f"👥 Member Contributions: ₱{total_contrib:,.2f}")
-
     st.divider()
 
-    # ========== DETAILED TRANSACTION LIST WITH DATE & TIME ==========
     st.subheader("📋 Detailed Transaction Record")
     if history:
         h_col1, h_col2, h_col3, h_col4, h_col5, h_col6 = st.columns([2, 2, 1.2, 1.5, 1.5, 1.5])
@@ -819,7 +814,7 @@ elif st.session_state.current_page == "Financial Reports":
         h_col2.markdown("**📝 Description**")
         h_col3.markdown("**📊 Type**")
         h_col4.markdown("**💵 Amount**")
-        h_col5.markdown("**📌 Allocated To**")
+        h_col5.markdown("**🎯 Allocated To**")
         h_col6.markdown("**✅ Status**")
         st.markdown("---")
 
@@ -827,28 +822,17 @@ elif st.session_state.current_page == "Financial Reports":
             status = row.get("status", "Approved")
             status_icon = "🟢" if status == "Approved" else "🟡" if status == "Pending Approval" else "🔴"
             event_name = event_map.get(row.get("event_id"), "General Fund")
-            member_name = member_map.get(row.get("member_id"), "—")
-
             r_col1, r_col2, r_col3, r_col4, r_col5, r_col6 = st.columns([2, 2, 1.2, 1.5, 1.5, 1.5])
             r_col1.markdown(f"{row['date']}")
             r_col2.markdown(f"{row['description']}")
             r_col3.markdown(f"*{row['type']}*")
             amount_color = "color:green; font-weight:bold;" if row["type"] == "Income" else "color:red; font-weight:bold;"
             r_col4.markdown(f"<span style='{amount_color}'>₱{float(row['amount']):,.2f}</span>", unsafe_allow_html=True)
-            r_col5.markdown(f"{event_name}")
+            r_col5.markdown(f"🎯 {event_name}")
             r_col6.markdown(f"{status_icon} {status}")
             st.markdown("---")
     else:
         st.info("📭 No transactions recorded yet.")
-
-    st.divider()
-
-    # ========== MEMBER SUMMARY ==========
-    st.subheader("👤 Member Contribution Summary")
-    if members:
-        for m in members:
-            st.markdown(f"• **{m.get('name')}** — {m.get('position')} — ₱{float(m.get('contribution', 0)):,.2f}")
-    st.markdown(f"### 💰 Total Contributions: **₱{total_contrib:,.2f}**")
 
 # ==========================================
 # 👤 MY CONTRIBUTION — MEMBER
