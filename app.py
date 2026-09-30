@@ -194,7 +194,6 @@ def get_total_contribution():
     return round(sum(float(m.get("contribution", 0)) for m in members), 2)
 
 def get_transaction_totals():
-    """Returns (total_income, total_approved_expense, total_pending_expense)"""
     try:
         res = supabase.table("transactions1").select("amount, type, status").execute()
         income = sum(float(r["amount"]) for r in res.data if r["type"] == "Income")
@@ -206,7 +205,6 @@ def get_transaction_totals():
         return 0.0, 0.0, 0.0
 
 def get_total_balance():
-    """💰 TOTAL SAVINGS = Member Contributions + All Income - Approved Expenses"""
     contrib = get_total_contribution()
     income, approved_exp, _ = get_transaction_totals()
     return round(contrib + income - approved_exp, 2)
@@ -224,7 +222,7 @@ def get_all_events():
     except: return []
 
 # ==========================================
-# 📊 TRANSACTIONS — WITH EVENT & MEMBER ALLOCATION
+# 📊 TRANSACTIONS — with Event & Member Linking
 # ==========================================
 def add_transaction(desc, amount, trans_type, event_id=None, member_id=None):
     try:
@@ -576,7 +574,7 @@ if st.session_state.current_page == "Dashboard":
     st.caption(f"🏛️ SPTYO Fund Monitor — Logged in as: {role}")
 
 # ==========================================
-# 📋 TRANSACTIONS — SHOWS ALLOCATED EVENT
+# 📋 TRANSACTIONS — SHOW ALLOCATED EVENT FOR EVERYONE
 # ==========================================
 elif st.session_state.current_page == "Transactions":
     st.markdown("<h2>📋 Complete Transaction History</h2>", unsafe_allow_html=True)
@@ -603,7 +601,6 @@ elif st.session_state.current_page == "Transactions":
             status = row.get("status", "Approved")
             status_icon = "🟢" if status == "Approved" else "🟡" if status == "Pending Approval" else "🔴"
             event_name = event_map.get(row.get("event_id"), "General Fund")
-            member_name = member_map.get(row.get("member_id"), "—")
             r_col1, r_col2, r_col3, r_col4, r_col5, r_col6 = st.columns([2, 2, 1.2, 1.5, 1.5, 1.5])
             r_col1.markdown(f"{row['date']}")
             r_col2.markdown(f"{row['description']}")
@@ -683,9 +680,13 @@ elif st.session_state.current_page == "Submit Request":
         st.info("📭 No submitted requests yet.")
 
 # ==========================================
-# 👤 MANAGE MEMBERS — TREASURER
+# 👤 MANAGE MEMBERS — TREASURER ONLY
 # ==========================================
 elif st.session_state.current_page == "Manage Members":
+    if role != "Treasurer":
+        st.error("❌ Only Treasurer can access this page.")
+        st.stop()
+        
     st.markdown("<h2>👤 Manage Members & Contributions</h2>", unsafe_allow_html=True)
     st.divider()
     st.subheader("➕ Add New Member")
@@ -717,16 +718,20 @@ elif st.session_state.current_page == "Manage Members":
                             st.rerun()
 
 # ==========================================
-# ➕ RECORD TRANSACTIONS — SELECT EVENT/PROJECT
+# ➕ RECORD TRANSACTIONS — TREASURER ONLY + EVENT SELECTION
 # ==========================================
 elif st.session_state.current_page == "Record Transactions":
+    if role != "Treasurer":
+        st.error("❌ Only Treasurer can record transactions.")
+        st.stop()
+        
     st.markdown("<h2>➕ Record Income & Expenses</h2>", unsafe_allow_html=True)
     st.divider()
 
     events = get_all_events()
     members = get_all_members()
 
-    # Build dropdown options with IDs
+    # Build dropdown options — ONLY Treasurer sees this
     event_options = ["— General Fund —"] + [e["name"] for e in events]
     event_ids = [None] + [e["id"] for e in events]
     member_options = ["— Not Linked —"] + [m["name"] for m in members]
@@ -783,6 +788,10 @@ elif st.session_state.current_page == "Record Transactions":
 # 📈 FINANCIAL REPORTS
 # ==========================================
 elif st.session_state.current_page == "Financial Reports":
+    if role != "Treasurer":
+        st.error("❌ Only Treasurer can access Financial Reports.")
+        st.stop()
+        
     st.markdown("<h2>📈 Financial Reports</h2>", unsafe_allow_html=True)
     st.divider()
 
@@ -935,9 +944,10 @@ elif st.session_state.current_page == "Polls":
         for idx, p in enumerate(polls):
             poll_id = p.get("id")
             question = p.get("question", "No question")
-            options = p.get("options", []) or []
-            votes = p.get("votes", {opt: 0 for opt in options})
-            voters = p.get("voters", {}) or {}
+# ... continuing from where it stopped ...
+            options = p.get("options", [])
+            votes = p.get("votes", {})
+            voters = p.get("voters", {})
 
             st.markdown(f"### {idx+1}. {question}")
             total_votes = sum(votes.values())
@@ -997,6 +1007,8 @@ elif st.session_state.current_page == "Announcements":
                         st.rerun()
                     else:
                         st.error("❌ Failed to post! Check Supabase table.")
+    else:
+        st.markdown("<div class='readonly-badge'>👁️ View-Only — Announcements managed by President</div>", unsafe_allow_html=True)
 
     # EVERYONE: VIEW ALL ANNOUNCEMENTS
     announcements = get_all_announcements()
@@ -1032,6 +1044,8 @@ elif st.session_state.current_page == "Announcements":
             # MARK AS SEEN — FOR NON-PRESIDENTS
             if is_new and role != "President":
                 mark_as_seen(ann["id"])
+
+            st.markdown("---")
 
 # ==========================================
 # 📄 FOOTER — ALWAYS SHOWN
